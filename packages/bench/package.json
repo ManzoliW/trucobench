@@ -1,0 +1,11 @@
+{
+	"name": "@trucobench/bench",
+	"version": "0.0.1",
+	"private": true,
+	"type": "module",
+	"main": "src/index.ts",
+	"dependencies": {
+		"@trucobench/engine": "workspace:*",
+		"@trucobench/agents": "workspace:*"
+	}
+}

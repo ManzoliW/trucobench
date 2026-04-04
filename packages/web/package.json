@@ -1,0 +1,31 @@
+{
+	"name": "@trucobench/web",
+	"version": "0.0.1",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "next dev --turbopack",
+		"build": "next build",
+		"start": "next start"
+	},
+	"dependencies": {
+		"@ai-sdk/anthropic": "^3.0.66",
+		"@ai-sdk/google": "^3.0.56",
+		"@ai-sdk/openai": "^3.0.50",
+		"@trucobench/agents": "workspace:*",
+		"@trucobench/engine": "workspace:*",
+		"ai": "^6.0.144",
+		"dotenv": "^17.4.0",
+		"next": "^16.2.2",
+		"react": "^19.2.4",
+		"react-dom": "^19.2.4"
+	},
+	"devDependencies": {
+		"@tailwindcss/postcss": "^4.2.2",
+		"@types/node": "^25.5.0",
+		"@types/react": "^19.2.14",
+		"@types/react-dom": "^19.2.3",
+		"postcss": "^8.5.8",
+		"tailwindcss": "^4.2.2"
+	}
+}

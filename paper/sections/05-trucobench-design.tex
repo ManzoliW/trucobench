@@ -1,0 +1,72 @@
+\section{TrucoBench Design}
+
+\subsection{Engine Architecture}
+
+TrucoBench is built on a pure, deterministic Truco Paulista engine with a Gym-style API. The engine exposes four core methods:
+
+\begin{itemize}
+    \item \texttt{reset()} $\to$ initializes a new game with shuffled deck
+    \item \texttt{observe(player)} $\to$ returns the imperfect-information observation for the given player
+    \item \texttt{step(player, action)} $\to$ validates and executes an action, advancing game state
+    \item \texttt{getLegalActions(player)} $\to$ returns all currently legal actions
+\end{itemize}
+
+The engine has zero external dependencies and supports seeded random number generation for reproducibility. A seeded PRNG (xorshift32) ensures deterministic deck shuffles given the same seed.
+
+\subsection{Prompt Format}
+
+Each LLM receives a text prompt serializing the current game observation. We design three prompt variants for sensitivity analysis:
+
+\begin{itemize}
+    \item \textbf{Minimal:} Raw game state facts only (hand, vira, score, legal actions).
+    \item \textbf{Standard:} Structured sections with labeled manilhas, trick history, escalation state, and explicit JSON response format.
+    \item \textbf{Verbose:} Standard prompt augmented with a full rules summary and strategic hints.
+\end{itemize}
+
+All prompts are available in English and Portuguese for language bias analysis.
+
+Models must respond in a structured JSON format:
+\begin{verbatim}
+{
+  "reasoning": "<chain-of-thought>",
+  "action": "PLAY_CARD|TRUCO|ACCEPT|RAISE|FOLD",
+  "card_index": 0
+}
+\end{verbatim}
+
+\subsection{Parse Protocol}
+
+We implement a 3-retry parse protocol:
+\begin{enumerate}
+    \item \textbf{Attempt 1:} Send game state prompt, parse response as JSON.
+    \item \textbf{Retry 1:} On failure, append ``Your response was not valid JSON'' and re-send.
+    \item \textbf{Retry 2:} On failure, explicitly list all legal actions and re-send.
+    \item \textbf{Fallback:} After 3 failures, default to the weakest legal action (fold if available, otherwise lowest card).
+\end{enumerate}
+
+Importantly, the parse failure rate is itself a benchmark metric---it measures the model's ability to follow structured output instructions under game pressure.
+
+\subsection{Evaluation Protocol}
+
+\paragraph{Round-robin tournament.} Every model plays every other model $N$ times (default $N = 200$), as well as against baseline agents (Random and Heuristic).
+
+\paragraph{Duplicate format.} Following poker research methodology, each game is played twice with hands swapped between players, reducing variance due to card distribution luck.
+
+\paragraph{ELO rating.} We compute ELO ratings from all games using $K = 32$ and an initial rating of 1500.
+
+\subsection{Metrics}
+
+We collect the following metrics per agent:
+
+\begin{itemize}
+    \item \textbf{Win rate} (overall and per matchup)
+    \item \textbf{ELO rating}
+    \item \textbf{Bluff success rate:} Truco calls on weak hands where the opponent folded
+    \item \textbf{Bluff detection rate:} Correctly not folding to opponent bluffs
+    \item \textbf{Escalation depth:} Distribution across levels (Normal/Truco/Seis/Nove/Doze)
+    \item \textbf{Fold rate}
+    \item \textbf{Parse failure rate}
+    \item \textbf{Decision latency} (ms per action)
+    \item \textbf{Cost per hand} (\$/hand based on token usage)
+    \item \textbf{Reasoning length} (tokens in the chain-of-thought field)
+\end{itemize}

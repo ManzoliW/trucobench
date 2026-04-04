@@ -1,0 +1,10 @@
+{
+	"agents": ["random", "heuristic", "claude-sonnet-4.6", "gpt-4o"],
+	"gamesPerMatchup": 200,
+	"duplicate": true,
+	"baseSeed": 42,
+	"prompt": "standard",
+	"language": "en",
+	"temperature": 0.7,
+	"resultsDir": "results"
+}

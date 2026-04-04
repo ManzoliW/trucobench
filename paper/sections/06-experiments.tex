@@ -1,0 +1,43 @@
+\section{Experiments}
+
+\subsection{Models Evaluated}
+
+\begin{table}[h]
+\centering
+\caption{Models evaluated in TrucoBench.}
+\label{tab:models}
+\begin{tabular}{llll}
+\toprule
+\textbf{Model} & \textbf{Provider} & \textbf{Category} & \textbf{Cost Tier} \\
+\midrule
+Claude Sonnet 4.6 & Anthropic & Frontier & Mid \\
+Claude Haiku 4.5 & Anthropic & Fast & Low \\
+GPT-4o & OpenAI & Frontier & Mid \\
+GPT-4o-mini & OpenAI & Fast & Low \\
+Gemini 2.5 Pro & Google & Frontier & Mid \\
+Gemini 2.5 Flash & Google & Fast & Low \\
+DeepSeek-R1 & DeepSeek & Reasoning & Low \\
+Llama 3.3 70B & Meta (local) & Open & Free \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+In addition to LLM agents, we include two baseline agents:
+\begin{itemize}
+    \item \textbf{Random:} Selects uniformly from legal actions (performance floor).
+    \item \textbf{Heuristic:} Rule-based strategy that saves manilhas for decisive tricks, plays the weakest winning card, and calls truco when holding 2+ manilhas (performance ceiling for non-learning agents).
+\end{itemize}
+
+\subsection{Experimental Setup}
+
+All experiments use temperature $T = 0.7$ unless otherwise noted. Games are seeded for reproducibility.
+
+\paragraph{Experiment 1: Main tournament.} Round-robin, 200 games per pair, standard prompt, English. Duplicate format (400 effective games per pair).
+
+\paragraph{Experiment 2: Prompt sensitivity.} Top 3 models with minimal, standard, and verbose prompts (100 games each against Heuristic).
+
+\paragraph{Experiment 3: Language bias.} Top 3 models with English vs.\ Portuguese prompts (100 games each against Heuristic).
+
+\paragraph{Experiment 4: Temperature sensitivity.} Top model at $T \in \{0.0, 0.3, 0.7, 1.0\}$ vs.\ Heuristic (100 games each).
+
+\paragraph{Experiment 5: Baselines.} Every model vs.\ Random and Heuristic (200 games each).

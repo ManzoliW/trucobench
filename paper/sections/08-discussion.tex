@@ -1,0 +1,29 @@
+\section{Discussion}
+
+\subsection{What Truco Reveals Beyond Poker}
+
+% Escalation as a test of meta-game reasoning
+% Discrete vs continuous bluffing
+% Compact game tree enables more comprehensive analysis
+
+\subsection{Escalation as Meta-Reasoning}
+
+% The escalation chain tests a specific form of reasoning: commitment under uncertainty
+% Models must reason about credibility, counter-escalation probability, and expected value
+% This is distinct from poker's betting rounds
+
+\subsection{Cultural Priors in Model Responses}
+
+% Do models trained primarily on English data perform differently on a Brazilian game?
+% Language bias results discussion
+
+\subsection{Limitations}
+
+Our work has several limitations:
+\begin{itemize}
+    \item \textbf{Two-player only.} Traditional Truco Paulista is often played as a 4-player team game with partner signaling (sinais). The team variant introduces cooperative reasoning that is absent from our evaluation.
+    \item \textbf{No sinais.} In traditional play, teammates use subtle facial signals to communicate hand strength. This channel is not available to LLM agents.
+    \item \textbf{Prompt dependence.} LLM performance is sensitive to prompt format, as shown in our prompt sensitivity analysis. Results may vary with different prompt designs.
+    \item \textbf{Temperature sensitivity.} Our default temperature of 0.7 balances exploration and exploitation, but optimal temperature may vary by model.
+    \item \textbf{No learning.} LLMs play each game independently with no memory of prior games. Adaptive strategies over a tournament are not captured.
+\end{itemize}

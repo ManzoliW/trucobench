@@ -1,0 +1,44 @@
+\documentclass[11pt]{article}
+
+% --- Packages ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{multirow}
+\usepackage{subcaption}
+\usepackage[numbers]{natbib}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{tikz}
+\usetikzlibrary{automata,positioning,arrows.meta}
+
+% --- Metadata ---
+\title{TrucoBench: Evaluating LLM Strategic Reasoning Through Truco Paulista}
+\author{William Manzoli}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\input{sections/01-abstract}
+\input{sections/02-introduction}
+\input{sections/03-related-work}
+\input{sections/04-truco-formalization}
+\input{sections/05-trucobench-design}
+\input{sections/06-experiments}
+\input{sections/07-results}
+\input{sections/08-discussion}
+\input{sections/09-conclusion}
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\appendix
+\input{sections/appendix}
+
+\end{document}

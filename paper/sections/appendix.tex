@@ -1,0 +1,135 @@
+\section{Truco Paulista Rules}
+\label{app:rules}
+
+This appendix provides the complete rules of Truco Paulista as implemented in TrucoBench.
+
+\subsection{Deck and Cards}
+
+A 40-card deck is used (standard 52-card deck minus all 8s, 9s, and 10s). The four suits are: Ouros ($\diamondsuit$), Espadas ($\spadesuit$), Copas ($\heartsuit$), Paus ($\clubsuit$).
+
+Card strength from weakest to strongest:
+$$4 < 5 < 6 < 7 < Q < J < K < A < 2 < 3$$
+
+Suits do not break ties for non-manilha cards.
+
+\subsection{Manilhas}
+
+At the start of each round, one card is flipped as the \emph{vira}. The four cards of the next rank in the cycle become \emph{manilhas}---the strongest cards for that round.
+
+Manilha suit ordering (weakest to strongest):
+$$\diamondsuit < \spadesuit < \heartsuit < \clubsuit \text{ (Zap)}$$
+
+The Zap ($\clubsuit$ manilha) is the single strongest card in the game.
+
+\subsection{Round Structure}
+
+Each round is best-of-3 tricks. Each trick: both players play one card, higher card wins. Equal-strength cards result in a draw.
+
+Draw resolution:
+\begin{itemize}
+    \item Trick 1 draws $\to$ trick 2 winner takes the round
+    \item Trick 1 has a winner, trick 2 draws $\to$ trick 1 winner takes the round
+    \item Trick 3 draws $\to$ trick 1 winner takes the round
+    \item All three tricks draw $\to$ first player of the round wins
+\end{itemize}
+
+\subsection{Escalation}
+
+At any time during their turn, a player may call \emph{Truco} instead of playing a card:
+
+\begin{center}
+\begin{tabular}{lc}
+\toprule
+Level & Points \\
+\midrule
+Normal & 1 \\
+Truco & 3 \\
+Seis & 6 \\
+Nove & 9 \\
+Doze & 12 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The opponent responds with Accept, Raise, or Fold. On fold, the caller wins the previous level's points.
+
+\subsection{M\~{a}o de Onze}
+
+When a team reaches exactly 11 points:
+\begin{itemize}
+    \item They see their cards and choose to play (round worth 3 points) or fold (opponent gets 1 point).
+    \item They cannot call Truco during this round.
+\end{itemize}
+
+When both teams are at 11 (\emph{m\~{a}o de ferro}): the round is worth 3 points with no escalation allowed.
+
+\subsection{Game End}
+
+The first team to reach 12 points wins.
+
+\section{Prompt Examples}
+\label{app:prompts}
+
+The following examples show the three prompt variants for the same game state: Player holds 3$\spadesuit$ (manilha), 2$\spadesuit$, A$\heartsuit$. Vira is 2$\heartsuit$. Opponent has played K$\clubsuit$. Score is 0--0.
+
+\subsection{Minimal Prompt}
+
+\begin{verbatim}
+Hand: 3 of Espadas (manilha), 2 of Espadas, A of Copas
+Vira: 2 copas
+Score: You 0 - Opponent 0
+Opp played: K♣
+Current stake: 1 point
+Actions:
+1. PLAY_CARD 0 (3 of Espadas (manilha))
+2. PLAY_CARD 1 (2 of Espadas)
+3. PLAY_CARD 2 (A of Copas)
+4. TRUCO
+\end{verbatim}
+
+\subsection{Standard Prompt}
+
+\begin{verbatim}
+You are playing Truco Paulista.
+
+## Your hand
+- 0: 3 of Espadas (Spades) (manilha)
+- 1: 2 of Espadas (Spades)
+- 2: A of Copas (Hearts)
+
+## Vira
+2 of Copas (Hearts)
+
+## Manilhas (strongest to weakest)
+1. 3 of Paus (Clubs) (Zap)
+2. 3 of Copas (Hearts)
+3. 3 of Espadas (Spades)
+4. 3 of Ouros (Diamonds) (weakest)
+
+## Score
+You: 0 | Opponent: 0
+
+## Current round (trick 1 of 3)
+- Trick 1: Opponent plays K♣. Your turn.
+
+## Escalation
+Current stake: 1 point
+
+## Legal actions
+1. PLAY_CARD 0 (3 of Espadas (manilha))
+2. PLAY_CARD 1 (2 of Espadas)
+3. PLAY_CARD 2 (A of Copas)
+4. TRUCO
+
+Respond in JSON:
+{"reasoning": "...", "action": "PLAY_CARD", "card_index": 0}
+\end{verbatim}
+
+\subsection{Verbose Prompt}
+
+The verbose variant prepends the standard prompt with a complete rules summary and strategic hints (approximately 200 additional tokens). See the repository for the full template.
+
+\section{Full Results Tables}
+\label{app:results}
+
+% TODO: Include detailed results tables after experiments

@@ -1,0 +1,454 @@
+@import "tailwindcss";
+
+@theme {
+	--font-display: var(--font-display), "EB Garamond", Georgia, serif;
+	--font-label: var(--font-label), "Hanken Grotesk", system-ui, sans-serif;
+	--font-ui: var(--font-ui), "Work Sans", system-ui, sans-serif;
+}
+
+/* ── Light mode (default) ── */
+:root {
+	--bg: #dddac9;
+	--bg-warm: #d4d0be;
+	--surface: #ece9da;
+	--surface-2: #e2dfce;
+	--surface-3: #d8d4c3;
+	--border: #c4bfae;
+	--border-light: #b0a998;
+	--text: #282826;
+	--text-muted: #5a5750; /* ~4.6:1 on --bg */
+	--text-dim: #7a756a; /* ~4.0:1 on --bg (large text AA) */
+	--accent: #9f4b2b; /* Minium */
+	--accent-light: #b55e29; /* Realgar */
+	--green: #4f6b3c; /* Malachite */
+	--green-light: #5b7b43;
+	--gold: #a38a3f; /* Staff */
+	--gold-dim: #c07c3a; /* Saffron */
+	--red: #8a3333; /* Vermilion */
+	--team-a: #8f5e32; /* Bronze/Copper */
+	--team-b: #3f6f61; /* Verdigris */
+	--seat-0: #8f5e32; /* south — bronze */
+	--seat-1: #3f6f61; /* west — verdigris */
+	--seat-2: #a38a3f; /* north — staff gold */
+	--seat-3: #5c4e89; /* east — indigo */
+	--card-face: #f5f0e8;
+	--card-border: #d0c8b8;
+	--table: #6a8a5e; /* sage green felt */
+	--table-light: #7a9a6e;
+	--table-border: #5a7a4e;
+	/* Provider badge colors — brand constants, same in both modes */
+	--provider-anthropic: #cc785c;
+	--provider-openai: #10a37f;
+	--provider-google: #4285f4;
+	--provider-deepseek: #4d6bfe;
+	--provider-huggingface: #ff9d00;
+	--provider-local: #6b5e50;
+	/* Suit colors — on card face (#f5f0e8) all meet 4.5:1+ */
+	--suit-ouros: #a07518;
+	--suit-espadas: #2855a0;
+	--suit-copas: #a02828;
+	--suit-paus: #186828;
+}
+
+/* ── Dark mode ── */
+.dark {
+	--bg: #282826;
+	--bg-warm: #302e2c;
+	--surface: #383634;
+	--surface-2: #434140;
+	--surface-3: #4e4c4a;
+	--border: #5a5856;
+	--border-light: #6a6866;
+	--text: #dddac9;
+	--text-muted: #b5b2a2; /* ~4.6:1 on dark bg */
+	--text-dim: #9a978a; /* ~4.0:1 on dark bg */
+	--accent: #b55e29; /* Realgar */
+	--accent-light: #cc6a2d;
+	--green: #5b7b43;
+	--green-light: #6a8e50;
+	--gold: #b89d4a;
+	--gold-dim: #d8913c; /* Saffron bright */
+	--red: #9e3838; /* Brighter Vermilion */
+	--team-a: #a6713d; /* Brighter Bronze */
+	--team-b: #468071; /* Brighter Verdigris */
+	--seat-0: #a6713d;
+	--seat-1: #468071;
+	--seat-2: #b89d4a;
+	--seat-3: #66589f; /* Brighter Indigo */
+	--card-face: #f5f0e8; /* Cards don't change */
+	--card-border: #d0c8b8;
+	--table: #2e4a32;
+	--table-light: #385a3c;
+	--table-border: #4a6a48;
+}
+
+/* ── Typography ── */
+body {
+	background: var(--bg);
+	color: var(--text);
+	font-family: var(--font-ui), "Work Sans", system-ui, sans-serif;
+	-webkit-font-smoothing: antialiased;
+	transition: background-color 0.3s, color 0.3s;
+}
+
+/* Display headings — EB Garamond */
+h1,
+.font-display {
+	font-family: var(--font-display), "EB Garamond", Georgia, serif;
+}
+
+/* Uppercase labels — Hanken Grotesk */
+[data-label] {
+	font-family: var(--font-label), "Hanken Grotesk", system-ui, sans-serif;
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+}
+
+/* UI elements — Work Sans */
+button,
+select,
+input,
+label,
+[data-ui] {
+	font-family: var(--font-ui), "Work Sans", system-ui, sans-serif;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+	width: 5px;
+}
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+::-webkit-scrollbar-thumb {
+	background: var(--border);
+	border-radius: 3px;
+}
+* {
+	scrollbar-width: thin;
+	scrollbar-color: var(--border) transparent;
+}
+
+/* Focus visible */
+:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+select:focus-visible,
+button:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+
+/* Option styling */
+option {
+	background: var(--surface-2);
+	color: var(--text);
+}
+
+/* ── Animations ── */
+@keyframes card-from-south {
+	from {
+		transform: translateY(60px) scale(0.7);
+		opacity: 0;
+	}
+	to {
+		transform: translateY(0) scale(1);
+		opacity: 1;
+	}
+}
+@keyframes card-from-north {
+	from {
+		transform: translateY(-60px) scale(0.7);
+		opacity: 0;
+	}
+	to {
+		transform: translateY(0) scale(1);
+		opacity: 1;
+	}
+}
+@keyframes card-from-west {
+	from {
+		transform: translateX(-60px) scale(0.7);
+		opacity: 0;
+	}
+	to {
+		transform: translateX(0) scale(1);
+		opacity: 1;
+	}
+}
+@keyframes card-from-east {
+	from {
+		transform: translateX(60px) scale(0.7);
+		opacity: 0;
+	}
+	to {
+		transform: translateX(0) scale(1);
+		opacity: 1;
+	}
+}
+@keyframes card-deal {
+	from {
+		opacity: 0;
+		transform: translateY(10px) scale(0.92);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+@keyframes fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+@keyframes score-bump {
+	0% {
+		transform: scale(1);
+	}
+	40% {
+		transform: scale(1.2);
+	}
+	100% {
+		transform: scale(1);
+	}
+}
+@keyframes slide-right {
+	from {
+		opacity: 0;
+		transform: translateX(12px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+@keyframes pulse-ring {
+	0%,
+	100% {
+		box-shadow: 0 0 0 0 rgba(79, 107, 60, 0.4);
+	}
+	50% {
+		box-shadow: 0 0 0 5px rgba(79, 107, 60, 0);
+	}
+}
+@keyframes callout-pop {
+	from {
+		transform: scale(0.8);
+		opacity: 0;
+	}
+	to {
+		transform: scale(1);
+		opacity: 1;
+	}
+}
+@keyframes table-shake {
+	0%,
+	100% {
+		transform: translateX(0);
+	}
+	10% {
+		transform: translateX(-4px) rotate(-0.5deg);
+	}
+	30% {
+		transform: translateX(4px) rotate(0.5deg);
+	}
+	50% {
+		transform: translateX(-3px);
+	}
+	70% {
+		transform: translateX(3px);
+	}
+	90% {
+		transform: translateX(-1px);
+	}
+}
+@keyframes escalation-flash {
+	0% {
+		opacity: 0.5;
+	}
+	100% {
+		opacity: 0;
+	}
+}
+@keyframes escalation-badge {
+	0% {
+		transform: scale(0) rotate(-15deg);
+		opacity: 0;
+	}
+	50% {
+		transform: scale(1.2) rotate(5deg);
+		opacity: 1;
+	}
+	100% {
+		transform: scale(1) rotate(0deg);
+		opacity: 1;
+	}
+}
+@keyframes trick-sweep {
+	to {
+		transform: translateY(-30px) scale(0.5);
+		opacity: 0;
+	}
+}
+@keyframes signal-toast {
+	0% {
+		transform: translateY(8px);
+		opacity: 0;
+	}
+	10% {
+		transform: none;
+		opacity: 1;
+	}
+	85% {
+		transform: none;
+		opacity: 1;
+	}
+	100% {
+		transform: translateY(-4px);
+		opacity: 0;
+	}
+}
+@keyframes chat-bubble {
+	0% {
+		transform: translateX(12px);
+		opacity: 0;
+	}
+	8% {
+		transform: none;
+		opacity: 1;
+	}
+	90% {
+		transform: none;
+		opacity: 1;
+	}
+	100% {
+		transform: translateX(4px);
+		opacity: 0;
+	}
+}
+
+.anim-from-south {
+	animation: card-from-south 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.anim-from-north {
+	animation: card-from-north 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.anim-from-west {
+	animation: card-from-west 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.anim-from-east {
+	animation: card-from-east 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.anim-deal {
+	animation: card-deal 0.3s ease-out both;
+}
+.anim-fade {
+	animation: fade-in 0.25s ease-out both;
+}
+.anim-score {
+	animation: score-bump 0.35s ease-out;
+}
+.anim-log {
+	animation: slide-right 0.2s ease-out both;
+}
+.anim-callout {
+	animation: callout-pop 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.anim-active {
+	animation: pulse-ring 1.5s ease-in-out infinite;
+}
+.anim-signal {
+	animation: signal-toast 3.5s ease-out forwards;
+}
+.anim-chat {
+	animation: chat-bubble 4.5s ease-out forwards;
+}
+.anim-shake {
+	animation: table-shake 0.4s ease-out;
+}
+.anim-escalation-badge {
+	animation: escalation-badge 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.anim-trick-sweep {
+	animation: trick-sweep 0.5s ease-in forwards;
+}
+
+/* ── Card flip ── */
+.card-flip-container {
+	perspective: 600px;
+}
+.card-flip-inner {
+	position: relative;
+	transform-style: preserve-3d;
+	transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.card-flip-inner.flipped {
+	transform: rotateY(180deg);
+}
+.card-flip-front,
+.card-flip-back {
+	backface-visibility: hidden;
+}
+.card-flip-back {
+	position: absolute;
+	inset: 0;
+	transform: rotateY(180deg);
+}
+
+.deal-0 {
+	animation-delay: 0ms;
+}
+.deal-1 {
+	animation-delay: 70ms;
+}
+.deal-2 {
+	animation-delay: 140ms;
+}
+
+/* ── Responsive card sizing ── */
+.card-sm {
+	width: clamp(38px, 8vw, 48px);
+	height: clamp(54px, 11vw, 68px);
+}
+.card-lg {
+	width: clamp(52px, 10vw, 68px);
+	height: clamp(74px, 14vw, 96px);
+}
+@media (min-width: 768px) {
+	.card-sm {
+		width: 48px;
+		height: 68px;
+	}
+	.card-lg {
+		width: 68px;
+		height: 96px;
+	}
+}
+
+/* Text overflow utilities */
+.line-clamp-3 {
+	display: -webkit-box;
+	-webkit-line-clamp: 3;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+.line-clamp-4 {
+	display: -webkit-box;
+	-webkit-line-clamp: 4;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+	}
+}

@@ -1,0 +1,13 @@
+\section{Related Work}
+
+\paragraph{LLM game benchmarks.}
+The evaluation of LLMs on strategic games has gained momentum. GameBench \citep{costarelli2024gamebench} evaluates models across multiple games but focuses primarily on perfect-information settings. LMGame-Bench \citep{hu2025lmgamebench} and ChatArena provide multi-agent evaluation platforms, while Board Game Arena benchmarks \citep{boardgamearena2025} test LLMs on classical board games. These works establish the value of game-based evaluation but do not address the specific challenges of imperfect-information card games with escalation mechanics.
+
+\paragraph{LLM poker evaluation.}
+Poker has been the primary testbed for LLM imperfect-information game play. PokerBench \citep{zhuang2025pokerbench} provides a structured evaluation of LLMs on Texas Hold'em, measuring hand strength estimation, pot odds reasoning, and bluffing behavior. SpinGPT \citep{maugin2025spingpt} evaluates LLMs on Spin \& Go poker tournaments. ToolPoker \citep{toolpoker2026} augments LLMs with external tools for poker reasoning. Suspicion-Agent \citep{guo2023suspicion} addresses deception and suspicion reasoning in imperfect-information games. While these works are closely related, Truco's escalation mechanic---absent in poker---introduces a structurally distinct form of strategic interaction.
+
+\paragraph{Classical imperfect-information game AI.}
+The development of superhuman AI for imperfect-information games has a rich history. Libratus \citep{brown2018libratus} and Pluribus achieved superhuman poker play through counterfactual regret minimization. ReBeL \citep{brown2020rebel} introduced a general framework for imperfect-information games. Student of Games unified perfect and imperfect-information game playing. These systems use game-specific algorithms rather than general-purpose language models, representing a complementary approach to ours.
+
+\paragraph{Truco AI.}
+Prior work on Truco AI has focused on classical reinforcement learning approaches. TrucoAnalytics (IAARhub) applies statistical analysis to Truco game play. To our knowledge, no prior work evaluates LLMs on Truco or formalizes it as a POSG for LLM benchmarking.
