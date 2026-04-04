@@ -693,7 +693,7 @@ export function Table() {
 					<span>MIT License</span>
 					<span aria-hidden="true">&middot;</span>
 					<a
-						href="https://github.com/user/trucobench"
+						href="https://github.com/ManzoliW/trucobench"
 						target="_blank"
 						rel="noopener noreferrer"
 						className="hover:text-[var(--text-muted)] transition-colors underline underline-offset-2"
@@ -773,7 +773,7 @@ function ThemeToggle() {
 function GitHubLink() {
 	return (
 		<a
-			href="https://github.com/user/trucobench"
+			href="https://github.com/ManzoliW/trucobench"
 			target="_blank"
 			rel="noopener noreferrer"
 			className="w-9 h-9 min-h-[44px] min-w-[44px] flex items-center justify-center rounded bg-[var(--surface-2)] text-[var(--text-dim)] hover:text-[var(--text)] transition-colors"
