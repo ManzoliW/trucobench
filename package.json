@@ -4,6 +4,7 @@
 	"type": "module",
 	"workspaces": ["packages/*"],
 	"scripts": {
+		"build": "cd packages/web && next build",
 		"test": "bun test",
 		"check": "biome check .",
 		"check:fix": "biome check --write .",

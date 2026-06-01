@@ -1,0 +1,6 @@
+{
+  "buildCommand": "cd packages/web && next build",
+  "outputDirectory": "packages/web/.next",
+  "installCommand": "bun install",
+  "framework": "nextjs"
+}
