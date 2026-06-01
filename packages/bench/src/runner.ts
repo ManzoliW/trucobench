@@ -26,7 +26,7 @@ export async function playGame(
 	isDuplicate = false,
 	duplicateOf?: string,
 ): Promise<GameRecord> {
-	const game = new Game(seed);
+	const game = new Game({ seed });
 	game.reset();
 
 	const agents: [Agent, Agent] = [agent0, agent1];
@@ -159,6 +159,94 @@ export async function playMatchup(
 export interface AgentFactory {
 	name: string;
 	create: () => Agent;
+}
+
+async function asyncPool<T, R>(
+	concurrency: number,
+	items: T[],
+	fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+	const results: R[] = [];
+	const executing: Promise<void>[] = [];
+	for (const item of items) {
+		const p = fn(item).then((result) => {
+			results.push(result);
+		});
+		executing.push(p);
+		if (executing.length >= concurrency) {
+			await Promise.race(executing);
+			// Remove finished promises
+			for (let i = executing.length - 1; i >= 0; i--) {
+				// biome-ignore lint/suspicious/noExplicitAny: internal check
+				if ((executing[i] as any).status === "fulfilled" || (executing[i] as any).status === "rejected") {
+					executing.splice(i, 1);
+				}
+			}
+			// Note: race doesn't tell us which one finished, so we just filter
+			// A better way is to wrap promises to track status
+		}
+	}
+	await Promise.all(executing);
+	return results;
+}
+
+// Re-implementing asyncPool more robustly
+async function pool<T, R>(
+	concurrency: number,
+	items: T[],
+	fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+	const results: R[] = new Array(items.length);
+	let i = 0;
+	const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+		while (i < items.length) {
+			const index = i++;
+			results[index] = await fn(items[index]!);
+		}
+	});
+	await Promise.all(workers);
+	return results;
+}
+
+export async function runTournamentParallel(
+	agents: AgentFactory[],
+	config: TournamentConfig,
+	concurrency = 4,
+	checkpointDir?: string,
+): Promise<TournamentResult> {
+	const checkpoint = checkpointDir ? new Checkpoint(checkpointDir) : null;
+	const startTime = checkpoint?.startTime ?? new Date().toISOString();
+
+	const matchupTasks: { a: AgentFactory; b: AgentFactory; offset: number }[] = [];
+	let seedOffset = 0;
+
+	for (let i = 0; i < agents.length; i++) {
+		for (let j = i + 1; j < agents.length; j++) {
+			matchupTasks.push({ a: agents[i]!, b: agents[j]!, offset: seedOffset });
+			seedOffset += config.gamesPerMatchup;
+		}
+	}
+
+	const matchups = await pool(concurrency, matchupTasks, async (task) => {
+		return await playMatchupWithCheckpoint(
+			task.a.create,
+			task.b.create,
+			config.gamesPerMatchup,
+			config.baseSeed + task.offset,
+			config.duplicate,
+			checkpoint,
+		);
+	});
+
+	const totalGames = matchups.reduce((sum, m) => sum + m.games.length, 0);
+
+	return {
+		config,
+		matchups,
+		startTime,
+		endTime: new Date().toISOString(),
+		totalGames,
+	};
 }
 
 export async function runTournament(

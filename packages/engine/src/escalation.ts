@@ -14,6 +14,7 @@ export function createEscalationState(): EscalationState {
 		pendingRequest: null,
 		requestedBy: null,
 		lastEscalatedBy: null,
+		initiatedBySeat: null,
 	};
 }
 
@@ -86,6 +87,8 @@ export function processEscalation(
 				...state,
 				pendingRequest: next,
 				requestedBy: player,
+				// Track who started the chain (only on first escalation, not re-raises)
+				initiatedBySeat: state.initiatedBySeat ?? player,
 			};
 			break;
 		}
@@ -98,6 +101,7 @@ export function processEscalation(
 				pendingRequest: null,
 				requestedBy: null,
 				lastEscalatedBy: state.requestedBy,
+				initiatedBySeat: state.initiatedBySeat, // preserve — cleared after card play
 			};
 			break;
 		}
@@ -112,6 +116,7 @@ export function processEscalation(
 				pendingRequest: nextLevel, // and raise to the next
 				requestedBy: player,
 				lastEscalatedBy: state.requestedBy, // previous requester was last to escalate
+				initiatedBySeat: state.initiatedBySeat, // preserve chain initiator
 			};
 			break;
 		}

@@ -95,7 +95,7 @@ describe("parseResponse", () => {
 
 describe("weakestLegalAction", () => {
 	test("prefers FOLD when available", () => {
-		const game = new Game(42);
+		const game = new Game({ seed: 42, trucoTiming: "anytime" });
 		game.reset();
 		const player = game.getCurrentPlayer()!;
 		game.step(player, { type: "TRUCO" });

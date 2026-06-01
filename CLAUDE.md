@@ -54,7 +54,11 @@ Pure, deterministic Truco Paulista engine. Gym-style API:
 
 Action space: `PLAY_CARD(cardIndex)`, `TRUCO`, `ACCEPT`, `RAISE`, `FOLD`
 
+Both `Game` and `Game4P` constructors accept an options object: `{ seed?, trucoTiming?, signalConfig? }`. The `trucoTiming` setting (`"anytime" | "after-first-card" | "after-first-trick"`, default `"after-first-trick"`) controls when TRUCO can be called.
+
 Also includes `Game4P` (`game4p.ts`) — a 4-player team variant with teams [0,2] vs [1,3], partner signals (`signals.ts`), and chat. Helpers: `teamOf(seat)`, `partnerOf(seat)`, `nextSeat(seat)`.
+
+**4P Escalation mechanics:** When TRUCO is called, `getCurrentSeat()` returns `null` — both members of the responding team can independently accept/fold/raise (first response wins). `EscalationState.initiatedBySeat` tracks who was active when escalation started, restoring their turn after resolution.
 
 **Critical constraint:** The `Observation` type must guarantee no information leak — opponent hand is never visible.
 
@@ -73,7 +77,17 @@ Round-robin tournament with checkpoint/resume, duplicate format (swap hands), se
 Commands: `run` (single matchup), `tournament` (round-robin), `report` (generate reports), `leaderboard`
 
 ### `web/` — Next.js Web Interface
-Interactive game UI with real-time streaming. Uses Next.js 16, React 19, Tailwind 4. Single-screen "Living Table" design — lobby (seat picking) and gameplay happen on the same table. API routes under `/app/api/game/` handle game creation, state queries, action submission, SSE streaming, chat, and signals. Key components: `Table.tsx` (main orchestrator), `GameBoard.tsx` (gameplay), `Seat.tsx` (player slots), `SeatPicker.tsx` (model/key picker). Supports provider modes: direct API keys, OpenRouter, Vercel AI Gateway, Hugging Face. The `/api/gateway-models` route fetches available models dynamically from gateway providers. Includes i18n (EN/PT/ES) via `lib/i18n.ts`, toast notifications, and Claude Code CLI detection for Anthropic models.
+Interactive game UI with real-time streaming. Uses Next.js 16, React 19, Tailwind 4. Single-screen "Living Table" design — lobby (seat picking) and gameplay happen on the same table. Magazine/newspaper cut-out aesthetic with torn-paper CSS effects, ransom-note typography (`RansomTitle`, `RansomLabel` components), and parchment color palette.
+
+API routes under `/app/api/game/` handle game creation, state queries, action submission, SSE streaming, chat, and signals. `/api/og/` generates dynamic OG images for game result sharing. `/results` page renders shareable results with dynamic OG meta tags.
+
+Key components: `Table.tsx` (main orchestrator + lobby), `GameBoard.tsx` (gameplay + hand area), `Seat.tsx` (player slots), `SeatPicker.tsx` (model/key picker), `Card.tsx` (card rendering), `RansomTitle.tsx` (cut-out letter styling).
+
+Key libs: `game-stats.ts` (stats aggregation), `game-history.ts` (localStorage persistence + base64url share encoding), `commentary.ts` (template-based spectator commentary), `i18n.ts` (EN/PT/ES translations).
+
+Supports provider modes: direct API keys, OpenRouter, Vercel AI Gateway (default), Hugging Face. Default models use cheapest options (Haiku, GPT-4o Mini, Gemini Flash, DeepSeek R1). Default settings: 30s timeout, economy prompt mode.
+
+Mobile-first responsive design targeting 360px+. Gameplay uses fixed-bottom hand area on mobile (via `--hand-h` CSS variable), inline on desktop. Game log collapses to single commentary line on mobile. First-visit onboarding hero with zero-friction "Play vs Bot" CTA.
 
 ## Environment Variables
 
@@ -104,6 +118,11 @@ The web UI also supports per-session API keys entered in the frontend (stored in
 - Game rules documentation in `docs/RULES.md`; POSG formalization in `docs/FORMALIZATION.md`
 - Heuristic agent uses seeded PRNG for deterministic bluffing/signaling decisions
 - Web UI uses SSE (Server-Sent Events) for real-time game streaming with closed-flag guard against ERR_INVALID_STATE
+- Default provider mode is Vercel Gateway (single key for all models)
+- Game results stored in localStorage (max 100, FIFO) — no server-side persistence
+- Share links encode game results as base64url in URL params — no database needed
+- `torn-paper` CSS class uses `clip-path` polygon for jagged edges + `isolation: isolate` for nesting
+- Design docs in `docs/`: `MOBILE-REDESIGN.md`, `UX-ROADMAP.md`, `TRUCO-RULES-FIX.md`
 
 ## Truco Paulista Quick Reference
 
@@ -117,7 +136,7 @@ This is essential domain knowledge for implementing the engine correctly.
 
 **Round structure:** Best of 3 tricks. Each player plays one card per trick, highest wins. Draw rules: trick 1 draw → both teams win that trick; trick 2/3 draw → first trick winner takes the round.
 
-**Escalation FSM:** `NORMAL(1pt) → TRUCO(3pt) → SEIS(6pt) → NOVE(9pt) → DOZE(12pt)`. On escalation, opponent can ACCEPT, RAISE (counter-escalate), or FOLD (caller wins pre-escalation points). Only the team that didn't last escalate can escalate.
+**Escalation FSM:** `NORMAL(1pt) → TRUCO(3pt) → SEIS(6pt) → NOVE(9pt) → DOZE(12pt)`. On escalation, opponent can ACCEPT, RAISE (counter-escalate), or FOLD (caller wins pre-escalation points). Only the team that didn't last escalate can escalate. TRUCO timing is configurable: `"after-first-trick"` (default — no TRUCO until trick 1 resolves), `"after-first-card"`, or `"anytime"`. In 4P, both members of the responding team can independently decide — first response wins. TRUCO doesn't consume a turn; the caller resumes play after resolution.
 
 **Mão de onze:** When a team reaches 11 points, they see their hand and decide to play or fold (1pt to opponent). Mão de ferro: both teams at 11 — special rules apply.
 

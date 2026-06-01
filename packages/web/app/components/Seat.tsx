@@ -2,6 +2,7 @@
 
 import type { PlayerConfig } from "@/lib/game-manager";
 import { type Locale, MODEL_PROVIDERS, getModelProvider, t } from "@/lib/i18n";
+import { useMemo } from "react";
 import { ProviderBadge } from "./ProviderBadge";
 
 export type SeatState = "empty" | "filled" | "active" | "thinking";
@@ -41,6 +42,18 @@ function getPlayerDisplayName(player: PlayerConfig, locale: Locale): string {
 
 export function Seat({ index, player, state, countdown, locale, onTap, onRemove }: Props) {
 	const teamColor = index % 2 === 0 ? "var(--team-a)" : "var(--team-b)";
+	const btnStyle = useMemo(
+		() => ({ background: `color-mix(in srgb, ${teamColor} 15%, transparent)` }),
+		[teamColor],
+	);
+	const avatarStyle = useMemo(
+		() => ({
+			borderColor: teamColor,
+			background: `color-mix(in srgb, ${teamColor} 25%, var(--surface))`,
+		}),
+		[teamColor],
+	);
+	const nameStyle = useMemo(() => ({ color: teamColor }), [teamColor]);
 	const isHuman = player?.type === "human";
 
 	if (state === "empty" || !player) {
@@ -48,13 +61,17 @@ export function Seat({ index, player, state, countdown, locale, onTap, onRemove 
 			<button
 				type="button"
 				onClick={onTap}
-				className="flex flex-col items-center justify-center gap-1 w-20 h-24 sm:w-24 sm:h-28 rounded-xl border-2 border-dashed border-[var(--table-border)] hover:border-[var(--text-dim)] transition-colors cursor-pointer group"
+				className="flex flex-col items-center justify-center gap-0.5 w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 border-dashed hover:brightness-125 transition-all cursor-pointer group"
+				style={{
+					borderColor: teamColor,
+					background: `color-mix(in srgb, ${teamColor} 10%, transparent)`,
+				}}
 				aria-label={`${t(locale, SEAT_NAMES[index] ?? "seat.south")} — ${t(locale, "seat.tapToFill")}`}
 			>
-				<span className="text-2xl text-[var(--table-border)] group-hover:text-[var(--text-dim)] transition-colors">
+				<span className="text-lg transition-colors leading-none" style={{ color: teamColor }}>
 					+
 				</span>
-				<span className="text-[10px] text-[var(--text-dim)]" data-label>{SEAT_LABELS[index]}</span>
+				<span className="text-[8px] leading-none opacity-70" style={{ color: teamColor }} data-label>{SEAT_LABELS[index]}</span>
 			</button>
 		);
 	}
@@ -65,7 +82,7 @@ export function Seat({ index, player, state, countdown, locale, onTap, onRemove 
 
 	// Use a wrapper div so remove <button> isn't nested inside another <button>
 	return (
-		<div className="relative">
+		<div className="relative anim-pop-in">
 			{/* Remove button (pre-game only) — outside the main tap area to avoid nesting */}
 			{onRemove && state === "filled" && (
 				<button
@@ -89,19 +106,13 @@ export function Seat({ index, player, state, countdown, locale, onTap, onRemove 
 							? "opacity-80"
 							: "hover:opacity-80"
 				}`}
-				style={{
-					background: `color-mix(in srgb, ${teamColor} 15%, transparent)`,
-					...(state === "active" ? ({ "--tw-ring-color": teamColor } as React.CSSProperties) : {}),
-				}}
+				style={state === "active" ? { ...btnStyle, "--tw-ring-color": teamColor } as React.CSSProperties : btnStyle}
 				onClick={onTap}
 			>
 				{/* Avatar */}
 				<div
 					className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center border-2 overflow-hidden"
-					style={{
-						borderColor: teamColor,
-						background: `color-mix(in srgb, ${teamColor} 25%, var(--surface))`,
-					}}
+					style={avatarStyle}
 				>
 					{isLLM && <ProviderBadge model={player.model!} size="md" />}
 					{isBot && (
@@ -123,7 +134,7 @@ export function Seat({ index, player, state, countdown, locale, onTap, onRemove 
 				{/* Name */}
 				<span
 					className="text-[11px] font-semibold truncate max-w-[calc(100%-0.5rem)] text-center"
-					style={{ color: teamColor }}
+					style={nameStyle}
 				>
 					{name}
 				</span>

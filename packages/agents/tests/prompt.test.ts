@@ -73,7 +73,7 @@ describe("serializePrompt", () => {
 	});
 
 	test("prompt does not contain opponent hand info", () => {
-		const game = new Game(42);
+		const game = new Game({ seed: 42 });
 		game.reset();
 		const obs = game.observe(0);
 		const opponentHand = game.state.currentRound!.hands[1];
@@ -94,7 +94,7 @@ describe("serializePrompt", () => {
 	});
 
 	test("mão de onze shows in standard prompt", () => {
-		const game = new Game(42);
+		const game = new Game({ seed: 42 });
 		game.reset();
 		game.state.scores = [11, 5];
 		game.state.currentRound = null;
@@ -105,7 +105,7 @@ describe("serializePrompt", () => {
 	});
 
 	test("mão de ferro shows in standard prompt", () => {
-		const game = new Game(42);
+		const game = new Game({ seed: 42 });
 		game.reset();
 		game.state.scores = [11, 11];
 		game.state.currentRound = null;

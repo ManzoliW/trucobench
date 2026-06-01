@@ -1,7 +1,7 @@
 "use client";
 
 import type { Card as CardType } from "@trucobench/engine";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const SUITS: Record<string, { symbol: string; color: string; name: string }> = {
 	ouros: { symbol: "\u2666", color: "var(--suit-ouros)", name: "Ouros" },
@@ -18,10 +18,12 @@ interface CardProps {
 	small?: boolean;
 	/** When true, card starts face-down then flips to reveal. */
 	flipIn?: boolean;
+	testId?: string;
 }
 
-export function Card({ card, isManilha, onClick, disabled, small, flipIn }: CardProps) {
+export function Card({ card, isManilha, onClick, disabled, small, flipIn, testId }: CardProps) {
 	const suit = SUITS[card.suit] ?? { symbol: "?", color: "var(--border)", name: card.suit };
+	const suitStyle = useMemo(() => ({ color: suit.color }), [suit.color]);
 	const interactive = onClick && !disabled;
 	const label = `${card.rank} of ${suit.name}${isManilha ? ", Manilha" : ""}`;
 
@@ -40,6 +42,10 @@ export function Card({ card, isManilha, onClick, disabled, small, flipIn }: Card
 			disabled={disabled || !onClick}
 			aria-label={label}
 			title={label}
+			data-testid={testId}
+			data-card-rank={card.rank}
+			data-card-suit={card.suit}
+			data-manilha={isManilha ? "true" : undefined}
 			className={`
 				card-size ${small ? "card-sm" : "card-lg"}
 				relative rounded-md flex flex-col items-center justify-center
@@ -54,24 +60,24 @@ export function Card({ card, isManilha, onClick, disabled, small, flipIn }: Card
 			<div
 				className={`absolute top-0.5 left-1 flex flex-col items-center leading-none ${small ? "text-[11px] sm:text-xs" : "text-[11px] sm:text-xs"}`}
 			>
-				<span className="font-bold" style={{ color: suit.color }}>
+				<span className="font-bold" style={suitStyle}>
 					{card.rank}
 				</span>
-				<span style={{ color: suit.color }}>{suit.symbol}</span>
+				<span style={suitStyle}>{suit.symbol}</span>
 			</div>
 			<span
 				className={small ? "text-lg sm:text-xl" : "text-2xl sm:text-3xl"}
-				style={{ color: suit.color }}
+				style={suitStyle}
 			>
 				{suit.symbol}
 			</span>
 			<div
 				className={`absolute bottom-0.5 right-1 flex flex-col items-center leading-none rotate-180 ${small ? "text-[11px] sm:text-xs" : "text-[11px] sm:text-xs"}`}
 			>
-				<span className="font-bold" style={{ color: suit.color }}>
+				<span className="font-bold" style={suitStyle}>
 					{card.rank}
 				</span>
-				<span style={{ color: suit.color }}>{suit.symbol}</span>
+				<span style={suitStyle}>{suit.symbol}</span>
 			</div>
 			{isManilha && (
 				<div

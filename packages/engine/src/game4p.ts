@@ -26,6 +26,7 @@ import {
 	type PlayerId,
 	type StepResult,
 	type TrickResult,
+	type TrucoTiming,
 } from "./types.ts";
 
 /**
@@ -111,10 +112,12 @@ export class FourPlayerGame {
 	readonly signalConfig: SignalConfig;
 	private seedBase: number | undefined;
 	private seedCounter = 0;
+	private trucoTiming: TrucoTiming;
 
-	constructor(seed?: number, signalConfig?: Partial<SignalConfig>) {
-		this.seedBase = seed;
-		this.signalConfig = { ...DEFAULT_SIGNAL_CONFIG, ...signalConfig };
+	constructor(options?: { seed?: number; signalConfig?: Partial<SignalConfig>; trucoTiming?: TrucoTiming }) {
+		this.seedBase = options?.seed;
+		this.signalConfig = { ...DEFAULT_SIGNAL_CONFIG, ...options?.signalConfig };
+		this.trucoTiming = options?.trucoTiming ?? "after-first-trick";
 		this.state = {
 			scores: [0, 0],
 			currentRound: null,
@@ -221,12 +224,14 @@ export class FourPlayerGame {
 			return round.maoDeOnze.team === 0 ? 0 : 1;
 		}
 
-		// Pending escalation: opponent team must respond — pick next player from opponent team
+		// Pending escalation: both members of responding team can act — return null
 		if (round.escalation.pendingRequest !== null && round.escalation.requestedBy !== null) {
-			const requestingTeam = teamOf(round.escalation.requestedBy as SeatId);
-			const respondingTeam = requestingTeam === 0 ? 1 : 0;
-			// First seat of responding team that's "next" in play order
-			return respondingTeam === 0 ? 0 : 1;
+			return null;
+		}
+
+		// Turn restoration: if escalation just resolved, the initiator plays next
+		if (round.escalation.initiatedBySeat !== null) {
+			return round.escalation.initiatedBySeat as SeatId;
 		}
 
 		// Card play: who's next in the trick?
@@ -283,12 +288,11 @@ export class FourPlayerGame {
 			return [];
 		}
 
-		// Pending escalation: responding team
+		// Pending escalation: any member of responding team can act
 		if (round.escalation.pendingRequest !== null) {
 			const requestingTeam = teamOf(round.escalation.requestedBy as SeatId);
-			if (team !== requestingTeam && this.getCurrentSeat() === seat) {
+			if (team !== requestingTeam) {
 				const actions: Action[] = [{ type: ActionType.ACCEPT }, { type: ActionType.FOLD }];
-				// For raise, use the seat as PlayerId (cast is safe for escalation logic)
 				if (canRaise(round.escalation, seat as unknown as PlayerId)) {
 					actions.push({ type: ActionType.RAISE });
 				}
@@ -305,8 +309,16 @@ export class FourPlayerGame {
 			(_, i): Action => ({ type: ActionType.PLAY_CARD, cardIndex: i }),
 		);
 
+		// TRUCO timing guard
+		let escalationAllowed = true;
+		if (this.trucoTiming === "after-first-trick") {
+			escalationAllowed = round.tricks.length > 0;
+		} else if (this.trucoTiming === "after-first-card") {
+			escalationAllowed = round.currentTrick.cardsPlayed > 0 || round.tricks.length > 0;
+		}
+
 		// Can escalate?
-		if (!round.maoDeferro && canEscalate(round.escalation, seat as unknown as PlayerId)) {
+		if (escalationAllowed && !round.maoDeferro && canEscalate(round.escalation, seat as unknown as PlayerId)) {
 			actions.push({ type: ActionType.TRUCO });
 		}
 
@@ -359,6 +371,11 @@ export class FourPlayerGame {
 			const card = hand[action.cardIndex];
 			if (!card) throw new Error(`Invalid card index: ${action.cardIndex}`);
 			round.hands[seat] = hand.filter((_, i) => i !== action.cardIndex);
+
+			// Clear turn restoration after the initiator plays
+			if (round.escalation.initiatedBySeat === seat) {
+				round.escalation.initiatedBySeat = null;
+			}
 
 			round.currentTrick.cards[seat] = card;
 			round.currentTrick.cardsPlayed++;

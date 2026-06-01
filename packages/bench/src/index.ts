@@ -1,4 +1,4 @@
-export { playGame, playMatchup, runTournament } from "./runner.ts";
+export { playGame, playMatchup, runTournament, runTournamentParallel } from "./runner.ts";
 export type { AgentFactory } from "./runner.ts";
 export { Checkpoint, saveTournamentResult } from "./checkpoint.ts";
 export { computeAgentMetrics, computeMatchupStats } from "./metrics.ts";
@@ -16,6 +16,8 @@ export {
 	reportToMarkdown,
 } from "./report.ts";
 export type { FullReport } from "./report.ts";
+export { runDiagnostics, createExampleScenario } from "./diagnostics.ts";
+export type { DiagnosticScenario, DiagnosticReport, ScenarioEvaluation } from "./diagnostics.ts";
 export type {
 	GameRecord,
 	RoundRecord,

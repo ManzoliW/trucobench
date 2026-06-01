@@ -63,18 +63,23 @@ export function OllamaIcon({ className }: IconProps) {
 }
 
 export function HuggingFaceIcon({ className }: IconProps) {
-	// Simplified HF-style emoji face — works reliably at small sizes
 	return (
-		<svg className={className} viewBox="0 0 24 24" aria-hidden="true">
-			<circle cx="12" cy="12" r="10" fill="currentColor" />
-			<circle cx="8.5" cy="10" r="1.4" fill="var(--bg, #1a1410)" />
-			<circle cx="15.5" cy="10" r="1.4" fill="var(--bg, #1a1410)" />
+		<svg className={className} viewBox="0 0 120 120" aria-hidden="true">
 			<path
-				d="M7.5 14.5C8 16.5 9.8 18 12 18s4-1.5 4.5-3.5"
-				fill="none"
-				stroke="var(--bg, #1a1410)"
-				strokeWidth="1.5"
-				strokeLinecap="round"
+				d="M60 0C26.9 0 0 26.9 0 60s26.9 60 60 60 60-26.9 60-60S93.1 0 60 0z"
+				fill="#FFD21E"
+			/>
+			<path
+				d="M37.5 42c-2.2 0-4 1.8-4 4v8c0 2.2 1.8 4 4 4s4-1.8 4-4v-8c0-2.2-1.8-4-4-4zm45 0c-2.2 0-4 1.8-4 4v8c0 2.2 1.8 4 4 4s4-1.8 4-4v-8c0-2.2-1.8-4-4-4z"
+				fill="#664500"
+			/>
+			<path
+				d="M60 92c-15.5 0-28-8.5-28-19h56c0 10.5-12.5 19-28 19z"
+				fill="#664500"
+			/>
+			<path
+				d="M60 88c-12.7 0-23-6-23-13.5h46c0 7.5-10.3 13.5-23 13.5z"
+				fill="#FF9D00"
 			/>
 		</svg>
 	);

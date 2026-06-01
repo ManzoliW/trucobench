@@ -74,7 +74,11 @@ export interface GatewayModel {
 	name: string;
 	owned_by: string;
 	context_window: number;
+	price: number;
+	max_tokens: number;
 }
+
+type GatewaySortKey = "name" | "price" | "context";
 
 interface Props {
 	seatIndex: number;
@@ -84,9 +88,11 @@ interface Props {
 	claudeAvailable: boolean;
 	providerMode: ProviderMode;
 	gatewayModels: GatewayModel[];
+	currentValue?: string | null;
 	onSetApiKey: (provider: string, key: string) => void;
 	onSetProviderMode: (mode: ProviderMode) => void;
 	onSelect: (value: string) => void;
+	onRemove?: () => void;
 	onClose: () => void;
 }
 
@@ -98,14 +104,18 @@ export function SeatPicker({
 	claudeAvailable,
 	providerMode,
 	gatewayModels,
+	currentValue,
 	onSetApiKey,
 	onSetProviderMode,
 	onSelect,
+	onRemove,
 	onClose,
 }: Props) {
 	const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
 	const [keyDraft, setKeyDraft] = useState("");
 	const [customModelId, setCustomModelId] = useState("");
+	const [modelSearch, setModelSearch] = useState("");
+	const [modelSort, setModelSort] = useState<GatewaySortKey>("name");
 	const dialogRef = useRef<HTMLDivElement>(null);
 
 	// Focus trap: keep Tab cycling inside the dialog
@@ -203,6 +213,23 @@ export function SeatPicker({
 			aria-labelledby="seat-picker-title"
 		>
 			<div ref={dialogRef} className="w-72 max-w-[calc(100vw-2rem)] max-h-[80vh] overflow-y-auto bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-2xl anim-fade">
+				{/* Remove from seat */}
+				{currentValue && onRemove && (
+					<div className="p-2 border-b border-[var(--border)]">
+						<button
+							type="button"
+							onClick={() => { onRemove(); onClose(); }}
+							className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-[var(--red)]/10 transition-colors text-left min-h-[44px]"
+						>
+							<svg className="w-4 h-4 text-[var(--red)]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+								<path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+							</svg>
+							<span className="text-xs font-semibold text-[var(--red)]">
+								{t(locale, "seat.remove")}
+							</span>
+						</button>
+					</div>
+				)}
 				{/* Quick picks */}
 				<div className="p-2 border-b border-[var(--border)]">
 					<p id="seat-picker-title" className="text-[11px] text-[var(--text-dim)] px-1 mb-1.5">
@@ -463,33 +490,77 @@ export function SeatPicker({
 
 					{/* Gateway models (dynamic) or hardcoded LLM list */}
 					{isUnifiedMode && !isHF && hasUnifiedKey && gatewayModels.length > 0
-						? gatewayModels.map((gm) => {
-								const providerSlug = gm.id.split("/")[0] ?? "local";
+						? (() => {
+								const q = modelSearch.toLowerCase();
+								const filtered = gatewayModels
+									.filter(
+										(gm) =>
+											!q ||
+											gm.name.toLowerCase().includes(q) ||
+											gm.id.toLowerCase().includes(q) ||
+											gm.owned_by.toLowerCase().includes(q),
+									)
+									.sort((a, b) => {
+										if (modelSort === "price") return a.price - b.price;
+										if (modelSort === "context") return b.context_window - a.context_window;
+										return a.name.localeCompare(b.name);
+									});
 								return (
-									<button
-										type="button"
-										key={gm.id}
-										onClick={() => onSelect(gm.id)}
-										className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-[var(--surface-2)] transition-colors text-left"
-									>
-										<ProviderBadge model={gm.id} size="md" />
-										<div className="min-w-0 flex-1">
-											<span className="text-xs font-semibold text-[var(--text)] truncate block">
-												{gm.name}
-											</span>
-											<span className="text-[11px] text-[var(--text-dim)]">
-												{providerSlug}
-											</span>
+									<>
+										{/* Search + sort controls */}
+										<div className="flex gap-1.5 mb-1.5">
+											<input
+												type="text"
+												value={modelSearch}
+												onChange={(e) => setModelSearch(e.target.value)}
+												placeholder="Search models..."
+												className="flex-1 bg-[var(--surface-2)] border border-[var(--border)] rounded px-2 py-1 text-[11px] text-[var(--text)] placeholder:text-[var(--text-dim)]/50 focus:outline-none focus:border-[var(--accent)] min-h-[44px]"
+											/>
+											<select
+												value={modelSort}
+												onChange={(e) => setModelSort(e.target.value as GatewaySortKey)}
+												className="bg-[var(--surface-2)] border border-[var(--border)] rounded px-1.5 py-2 text-[10px] text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] min-h-[44px]"
+											>
+												<option value="name">A-Z</option>
+												<option value="price">Price</option>
+												<option value="context">Context</option>
+											</select>
 										</div>
-										<span
-											className="text-[var(--green-light)] text-sm"
-											title="Ready"
-										>
-											{"\u25CF"}
-										</span>
-									</button>
+										<p className="text-[9px] text-[var(--text-dim)] px-1 mb-1">
+											{filtered.length} model{filtered.length !== 1 ? "s" : ""}
+											{q ? ` matching "${modelSearch}"` : ""}
+										</p>
+										{filtered.slice(0, 50).map((gm) => {
+											const providerSlug = gm.id.split("/")[0] ?? "local";
+											const priceLabel = gm.price > 0 ? `$${gm.price.toFixed(2)}/M` : "free";
+											const ctxLabel = gm.context_window > 0 ? `${Math.round(gm.context_window / 1000)}k` : "";
+											return (
+												<button
+													type="button"
+													key={gm.id}
+													onClick={() => onSelect(gm.id)}
+													className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-[var(--surface-2)] transition-colors text-left"
+												>
+													<ProviderBadge model={gm.id} size="md" />
+													<div className="min-w-0 flex-1">
+														<span className="text-xs font-semibold text-[var(--text)] truncate block">
+															{gm.name}
+														</span>
+														<span className="text-[10px] text-[var(--text-dim)]">
+															{providerSlug}
+															{ctxLabel ? ` \u00b7 ${ctxLabel}` : ""}
+															{` \u00b7 ${priceLabel}`}
+														</span>
+													</div>
+													<span className="text-[var(--green-light)] text-sm" title="Ready">
+														{"\u25CF"}
+													</span>
+												</button>
+											);
+										})}
+									</>
 								);
-							})
+							})()
 						: !isHF &&
 							LLM_AGENTS.map((a) => {
 								const provider = a.provider ?? "local";

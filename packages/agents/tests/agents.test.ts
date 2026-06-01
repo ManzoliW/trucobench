@@ -6,7 +6,7 @@ import { RandomAgent } from "../src/random-agent.ts";
 describe("RandomAgent", () => {
 	test("returns a legal action", async () => {
 		const agent = new RandomAgent();
-		const game = new Game(42);
+		const game = new Game({ seed: 42 });
 		game.reset();
 		const player = game.getCurrentPlayer()!;
 		const obs = game.observe(player);
@@ -25,7 +25,7 @@ describe("RandomAgent", () => {
 	test("can play a complete game", async () => {
 		const agent0 = new RandomAgent();
 		const agent1 = new RandomAgent();
-		const game = new Game(42);
+		const game = new Game({ seed: 42 });
 		game.reset();
 
 		let steps = 0;
@@ -45,7 +45,7 @@ describe("RandomAgent", () => {
 describe("HeuristicAgent", () => {
 	test("returns a legal action", async () => {
 		const agent = new HeuristicAgent();
-		const game = new Game(42);
+		const game = new Game({ seed: 42 });
 		game.reset();
 		const player = game.getCurrentPlayer()!;
 		const obs = game.observe(player);
@@ -64,7 +64,7 @@ describe("HeuristicAgent", () => {
 	test("can play a complete game", async () => {
 		const agent0 = new HeuristicAgent();
 		const agent1 = new HeuristicAgent();
-		const game = new Game(99);
+		const game = new Game({ seed: 99 });
 		game.reset();
 
 		let steps = 0;
@@ -87,7 +87,7 @@ describe("HeuristicAgent", () => {
 		for (let i = 0; i < totalGames; i++) {
 			const heuristic = new HeuristicAgent(i * 7);
 			const random = new RandomAgent();
-			const game = new Game(i);
+			const game = new Game({ seed: i });
 			game.reset();
 
 			// Alternate who is player 0
@@ -115,7 +115,7 @@ describe("HeuristicAgent", () => {
 
 	test("responds to mão de onze", async () => {
 		const agent = new HeuristicAgent();
-		const game = new Game(42);
+		const game = new Game({ seed: 42 });
 		game.reset();
 		game.state.scores = [11, 5];
 		game.state.currentRound = null;
@@ -130,7 +130,7 @@ describe("HeuristicAgent", () => {
 
 	test("responds to opponent escalation", async () => {
 		const agent = new HeuristicAgent();
-		const game = new Game(42);
+		const game = new Game({ seed: 42, trucoTiming: "anytime" });
 		game.reset();
 
 		const firstPlayer = game.getCurrentPlayer()!;

@@ -25,15 +25,22 @@ export async function POST(request: Request) {
 
 		const data = await res.json();
 
-		// Filter to language models only and return a slim list
+		// Filter to language models only, extract pricing + context
 		const models = (data.data ?? [])
 			.filter((m: Record<string, unknown>) => m.type === "language" || !m.type)
-			.map((m: Record<string, unknown>) => ({
-				id: m.id as string,
-				name: (m.name as string) ?? m.id,
-				owned_by: (m.owned_by as string) ?? "",
-				context_window: (m.context_window as number) ?? 0,
-			}));
+			.map((m: Record<string, unknown>) => {
+				const pricing = m.pricing as Record<string, unknown> | undefined;
+				return {
+					id: m.id as string,
+					name: (m.name as string) ?? m.id,
+					owned_by: (m.owned_by as string) ?? "",
+					context_window: (m.context_window as number) ?? 0,
+					// Pricing per million tokens (input)
+					price: pricing ? Number(pricing.prompt ?? pricing.input ?? 0) : 0,
+					// Max output tokens as rough speed proxy (smaller = faster)
+					max_tokens: (m.max_tokens as number) ?? 0,
+				};
+			});
 
 		return NextResponse.json({ models });
 	} catch (err) {

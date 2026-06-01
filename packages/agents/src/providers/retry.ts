@@ -7,9 +7,9 @@ export interface RetryOptions {
 }
 
 const DEFAULT_RETRY_OPTIONS: RetryOptions = {
-	maxRetries: 5,
+	maxRetries: 2,
 	baseDelayMs: 1000,
-	maxDelayMs: 60_000,
+	maxDelayMs: 8_000,
 };
 
 function isRetryableError(error: unknown): boolean {

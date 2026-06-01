@@ -30,7 +30,7 @@ In addition to LLM agents, we include two baseline agents:
 
 \subsection{Experimental Setup}
 
-All experiments use temperature $T = 0.7$ unless otherwise noted. Games are seeded for reproducibility.
+All experiment calls were routed through the Vercel AI Gateway to ensure high availability and unified token tracking. All experiments use temperature $T = 0.7$ unless otherwise noted. Games are seeded for reproducibility.
 
 \paragraph{Experiment 1: Main tournament.} Round-robin, 200 games per pair, standard prompt, English. Duplicate format (400 effective games per pair).
 

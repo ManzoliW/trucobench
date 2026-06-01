@@ -74,11 +74,14 @@ export interface RoundResult {
 	tricks: TrickResult[];
 }
 
+export type TrucoTiming = "anytime" | "after-first-card" | "after-first-trick";
+
 export interface EscalationState {
 	level: EscalationLevel;
 	pendingRequest: EscalationLevel | null; // the level being requested
 	requestedBy: PlayerId | null;
 	lastEscalatedBy: PlayerId | null; // who last escalated (they can't escalate again)
+	initiatedBySeat: number | null; // who was active when escalation chain started (for turn restoration)
 }
 
 export interface RoundState {

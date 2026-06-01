@@ -6,7 +6,7 @@ import type { Action, PlayerId } from "../src/types.ts";
 
 describe("Game", () => {
 	test("reset initializes a valid game state", () => {
-		const game = new Game(42);
+		const game = new Game({ seed: 42 });
 		const state = game.reset();
 		expect(state.scores).toEqual([0, 0]);
 		expect(state.winner).toBeNull();
@@ -17,7 +17,7 @@ describe("Game", () => {
 	});
 
 	test("observe returns correct player view", () => {
-		const game = new Game(42);
+		const game = new Game({ seed: 42 });
 		game.reset();
 		const obs0 = game.observe(0);
 		const obs1 = game.observe(1);
@@ -33,7 +33,7 @@ describe("Game", () => {
 	});
 
 	test("observation does not leak opponent hand", () => {
-		const game = new Game(42);
+		const game = new Game({ seed: 42 });
 		game.reset();
 		const round = game.state.currentRound!;
 		const obs0 = game.observe(0);
@@ -54,22 +54,22 @@ describe("Game", () => {
 	});
 
 	test("getLegalActions returns card plays for active player", () => {
-		const game = new Game(42);
+		const game = new Game({ seed: 42, trucoTiming: "anytime" });
 		game.reset();
 		const player = game.getCurrentPlayer()!;
 		const actions = game.getLegalActions(player);
 
-		// Should have 3 PLAY_CARD + possibly TRUCO
+		// Should have 3 PLAY_CARD + TRUCO (with "anytime" timing)
 		const cardPlays = actions.filter((a) => a.type === ActionType.PLAY_CARD);
 		expect(cardPlays.length).toBe(3);
 
-		// Should be able to call TRUCO
+		// Should be able to call TRUCO with "anytime" timing
 		const truco = actions.find((a) => a.type === ActionType.TRUCO);
 		expect(truco).toBeDefined();
 	});
 
 	test("non-active player has no legal actions", () => {
-		const game = new Game(42);
+		const game = new Game({ seed: 42 });
 		game.reset();
 		const active = game.getCurrentPlayer()!;
 		const other = active === 0 ? 1 : 0;
@@ -77,7 +77,7 @@ describe("Game", () => {
 	});
 
 	test("playing a card removes it from hand", () => {
-		const game = new Game(42);
+		const game = new Game({ seed: 42 });
 		game.reset();
 		const player = game.getCurrentPlayer()!;
 		const handBefore = game.state.currentRound!.hands[player].length;
@@ -88,7 +88,7 @@ describe("Game", () => {
 	});
 
 	test("full trick resolves correctly", () => {
-		const game = new Game(42);
+		const game = new Game({ seed: 42 });
 		game.reset();
 
 		const p1 = game.getCurrentPlayer()!;
@@ -104,7 +104,7 @@ describe("Game", () => {
 	});
 
 	test("calling TRUCO creates a pending escalation", () => {
-		const game = new Game(42);
+		const game = new Game({ seed: 42, trucoTiming: "anytime" });
 		game.reset();
 
 		const player = game.getCurrentPlayer()!;
@@ -124,7 +124,7 @@ describe("Game", () => {
 	});
 
 	test("accepting TRUCO increases stake to 3", () => {
-		const game = new Game(42);
+		const game = new Game({ seed: 42, trucoTiming: "anytime" });
 		game.reset();
 
 		const player = game.getCurrentPlayer()!;
@@ -137,7 +137,7 @@ describe("Game", () => {
 	});
 
 	test("folding gives points to the caller", () => {
-		const game = new Game(42);
+		const game = new Game({ seed: 42, trucoTiming: "anytime" });
 		game.reset();
 
 		const player = game.getCurrentPlayer()!;
@@ -152,7 +152,7 @@ describe("Game", () => {
 	});
 
 	test("raise counter-escalates", () => {
-		const game = new Game(42);
+		const game = new Game({ seed: 42, trucoTiming: "anytime" });
 		game.reset();
 
 		const p0 = game.getCurrentPlayer()!;
@@ -167,7 +167,7 @@ describe("Game", () => {
 	});
 
 	test("illegal action throws", () => {
-		const game = new Game(42);
+		const game = new Game({ seed: 42 });
 		game.reset();
 
 		const player = game.getCurrentPlayer()!;
@@ -180,7 +180,7 @@ describe("Game", () => {
 	});
 
 	test("cannot escalate after already escalating (same player)", () => {
-		const game = new Game(42);
+		const game = new Game({ seed: 42, trucoTiming: "anytime" });
 		game.reset();
 
 		const p0 = game.getCurrentPlayer()!;
@@ -199,7 +199,7 @@ describe("Game", () => {
 	});
 
 	test("complete round with card play gives correct points", () => {
-		const game = new Game(100);
+		const game = new Game({ seed: 100 });
 		game.reset();
 
 		// Play a full round (up to 3 tricks)
@@ -222,7 +222,7 @@ describe("Game", () => {
 	});
 
 	test("game completes when a player reaches 12 points", () => {
-		const game = new Game(1);
+		const game = new Game({ seed: 1 });
 		game.reset();
 
 		let gameOver = false;
@@ -252,7 +252,7 @@ describe("Game", () => {
 
 	test("seeded games are deterministic", () => {
 		function playGame(seed: number): { winner: PlayerId; scores: [number, number] } {
-			const game = new Game(seed);
+			const game = new Game({ seed });
 			game.reset();
 
 			while (game.state.winner === null) {
@@ -275,7 +275,7 @@ describe("Game", () => {
 
 describe("mão de onze", () => {
 	function setupMaoDeOnze(score0: number, score1: number, seed = 42): Game {
-		const game = new Game(seed);
+		const game = new Game({ seed });
 		game.reset();
 		game.state.scores = [score0, score1];
 		game.state.currentRound = null;

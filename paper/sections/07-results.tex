@@ -1,8 +1,17 @@
-\section{Results}
+\\section{Results}
 
-% TODO: Fill in after running experiments (Phase 4)
+In this section, we present the findings from our benchmark suite, encompassing both diagnostic scenarios and the round-robin tournament.
 
-\subsection{Main Tournament}
+\\subsection{Diagnostic Scenarios}
+
+The diagnostic evaluation serves as a luck-independent measure of strategic "intuition." We evaluated five representative models against a curated set of 9 scenarios covering core Truco Paulista mechanics.
+
+\\input{sections/diagnostic_table}
+
+The results in Table~\\ref{tab:diagnostics} reveal a significant "Knowing-Doing Gap." While frontier models like GPT-4o exhibit 100\\% accuracy in bluffing and defense scenarios, they struggle with hidden-information logic. Specifically, in scenario \\texttt{MATH\\_001} (Zap Management), GPT-4o consistently prioritized immediate trick victory over round security, a sub-optimal play in high-level Truco.
+
+\\subsection{Main Tournament}
+
 
 % Win rate heatmap (Figure)
 % ELO ranking bar chart (Figure)

@@ -54,6 +54,8 @@ export interface GameConfig {
 	turnTimeoutMs: number;
 	/** Per-provider API keys (optional — falls back to .env) */
 	apiKeys?: Record<string, string>;
+	/** When TRUCO can be called. Default: "after-first-trick" */
+	trucoTiming?: "anytime" | "after-first-card" | "after-first-trick";
 }
 
 export interface PlayerConfig {
@@ -97,36 +99,36 @@ const MODEL_IDS: Record<
 	string,
 	{ direct: [string, string]; openrouter: string; gateway: string }
 > = {
-	"gpt-4o": { direct: ["openai", "gpt-4o"], openrouter: "openai/gpt-4o", gateway: "gpt-4o" },
+	"gpt-4o": { direct: ["openai", "gpt-4o"], openrouter: "openai/gpt-4o", gateway: "openai/gpt-4o" },
 	"gpt-4o-mini": {
 		direct: ["openai", "gpt-4o-mini"],
 		openrouter: "openai/gpt-4o-mini",
-		gateway: "gpt-4o-mini",
+		gateway: "openai/gpt-4o-mini",
 	},
 	"claude-sonnet-4.6": {
 		direct: ["anthropic", "claude-sonnet-4-6-20260327"],
 		openrouter: "anthropic/claude-sonnet-4-6-20260327",
-		gateway: "claude-sonnet-4-6-20260327",
+		gateway: "anthropic/claude-sonnet-4.6",
 	},
 	"claude-haiku-4.5": {
 		direct: ["anthropic", "claude-haiku-4-5-20251001"],
 		openrouter: "anthropic/claude-haiku-4-5-20251001",
-		gateway: "claude-haiku-4-5-20251001",
+		gateway: "anthropic/claude-haiku-4.5",
 	},
 	"gemini-2.5-pro": {
 		direct: ["google", "gemini-2.5-pro"],
 		openrouter: "google/gemini-2.5-pro",
-		gateway: "gemini-2.5-pro",
+		gateway: "google/gemini-2.5-pro",
 	},
 	"gemini-2.5-flash": {
 		direct: ["google", "gemini-2.5-flash"],
 		openrouter: "google/gemini-2.5-flash",
-		gateway: "gemini-2.5-flash",
+		gateway: "google/gemini-2.5-flash",
 	},
 	"deepseek-r1": {
 		direct: ["deepseek", "deepseek-reasoner"],
 		openrouter: "deepseek/deepseek-r1",
-		gateway: "deepseek-reasoner",
+		gateway: "deepseek/deepseek-r1",
 	},
 };
 
@@ -225,7 +227,7 @@ async function createAgent(config: PlayerConfig, gameConfig: GameConfig): Promis
 			break;
 		}
 		case "vercel-gateway": {
-			const vgModel = MODEL_IDS[model]?.openrouter ?? model;
+			const vgModel = MODEL_IDS[model]?.gateway ?? model;
 			const vgKey = gameConfig.apiKeys?.["vercel-gateway"] ?? process.env.VERCEL_AI_GATEWAY_API_KEY ?? "";
 			const vgUrl = process.env.VERCEL_AI_GATEWAY_URL ?? "https://ai-gateway.vercel.sh/v1";
 			provider = new OpenAICompatProvider("vercel-gateway", vgModel, vgUrl, vgKey);
@@ -320,11 +322,12 @@ export async function createGame(config: GameConfig): Promise<GameSession> {
 	let game2p: Game | null = null;
 	let game4p: FourPlayerGame | null = null;
 
+	const trucoTiming = config.trucoTiming ?? "after-first-trick";
 	if (mode === "4p") {
-		game4p = new FourPlayerGame(seed);
+		game4p = new FourPlayerGame({ seed, trucoTiming });
 		game4p.reset();
 	} else {
-		game2p = new Game(seed);
+		game2p = new Game({ seed, trucoTiming });
 		game2p.reset();
 	}
 
@@ -439,7 +442,7 @@ async function run2pGame(session: GameSession): Promise<void> {
 		let action: Action;
 		const humanTimeoutMs = session.config.turnTimeoutMs;
 		// AI gets a generous 120s safety timeout — LLMs like Sonnet 4.6 need time to reason
-		const aiTimeoutMs = 120_000;
+		const aiTimeoutMs = 60_000;
 		if (agent === null) {
 			const obs = game.observe(pid);
 			session.events.push({
@@ -447,11 +450,16 @@ async function run2pGame(session: GameSession): Promise<void> {
 				data: { seat: pid, timeoutMs: humanTimeoutMs },
 			});
 			if (humanTimeoutMs > 0) {
+				let humanPlayed = false;
 				action = await Promise.race([
 					new Promise<Action>((r) => {
-						session.pendingHumanAction = r;
+						session.pendingHumanAction = (a: Action) => {
+							humanPlayed = true;
+							r(a);
+						};
 					}),
 					delay(humanTimeoutMs).then(() => {
+						if (humanPlayed) return null as unknown as Action;
 						session.pendingHumanAction = null;
 						session.events.push({ type: "timeout", data: { seat: pid } });
 						return weakestLegalAction(obs);
@@ -484,7 +492,7 @@ async function run2pGame(session: GameSession): Promise<void> {
 					type: "error",
 					data: { seat: pid, error: `${seatName}: ${errMsg}` },
 				});
-				return;
+				action = weakestLegalAction(obs);
 			}
 		}
 
@@ -507,13 +515,16 @@ async function run2pGame(session: GameSession): Promise<void> {
 		// Pause after AI plays so the animation is visible
 		if (agent !== null) {
 			if (action.type === ActionType.PLAY_CARD) await gameDelay(session, 700);
-			else await gameDelay(session, 1000);
+			else if (action.type === ActionType.FOLD) await gameDelay(session, 400);
+			else await gameDelay(session, 800);
 		}
 
 		if (result.roundDone) {
 			console.log(`[game] Round end — scores: ${result.scores[0]}-${result.scores[1]}`);
+			const wasFold = action.type === ActionType.FOLD;
 			session.events.push({ type: "trick_end", data: session.snapshot });
-			await gameDelay(session, 1200);
+			// Skip the long trick animation delay after a fold (no trick to show)
+			await gameDelay(session, wasFold ? 300 : 1200);
 			session.events.push({
 				type: "round_end",
 				data: { winner: result.roundWinner, scores: result.scores },
@@ -522,7 +533,7 @@ async function run2pGame(session: GameSession): Promise<void> {
 				session.events.push({ type: "round_pause", data: { scores: result.scores } });
 				await waitForContinue(session);
 			} else {
-				await gameDelay(session, 800);
+				await gameDelay(session, 500);
 			}
 		}
 		if (result.done) {
@@ -568,9 +579,25 @@ async function run4pGame(session: GameSession): Promise<void> {
 	let lastRoundNumber = game.state.roundNumber;
 
 	while (game.state.winner === null) {
-		const seat = game.getCurrentSeat();
-		if (seat === null) break;
+		let seat = game.getCurrentSeat();
+
+		// Team escalation decision: getCurrentSeat() returns null when both team members can respond
+		if (seat === null) {
+			const round = game.state.currentRound;
+			if (!round || round.escalation.pendingRequest === null) break; // actual end of game
+			const requestingTeam = teamOf(round.escalation.requestedBy as SeatId);
+			const respondingTeam = requestingTeam === 0 ? 1 : 0;
+			// Find first responding team seat (prefer human, then first clockwise from requester)
+			const respondingSeats = respondingTeam === 0 ? [0, 2] : [1, 3];
+			const humanResponder = respondingSeats.find((s) => session.agents[s] === null);
+			seat = (humanResponder !== undefined ? humanResponder : respondingSeats[0]!) as SeatId;
+		}
+
 		session.snapshot = buildSnapshot("4p", session.config, null, game);
+		// During escalation, getCurrentSeat() returns null but we've resolved who should respond
+		if (session.snapshot.currentSeat === null && seat !== null) {
+			session.snapshot.currentSeat = seat;
+		}
 		session.events.push({ type: "state", data: session.snapshot });
 
 		const agent = session.agents[seat];
@@ -582,11 +609,16 @@ async function run4pGame(session: GameSession): Promise<void> {
 			const obs2p = adapt4pObservation(obs4p);
 			session.events.push({ type: "waiting_human", data: { seat, timeoutMs: humanTimeoutMs4p } });
 			if (humanTimeoutMs4p > 0) {
+				let humanPlayed = false;
 				action = await Promise.race([
 					new Promise<Action>((r) => {
-						session.pendingHumanAction = r;
+						session.pendingHumanAction = (a: Action) => {
+							humanPlayed = true;
+							r(a);
+						};
 					}),
 					delay(humanTimeoutMs4p).then(() => {
+						if (humanPlayed) return null as unknown as Action;
 						session.pendingHumanAction = null;
 						session.events.push({ type: "timeout", data: { seat } });
 						return weakestLegalAction(obs2p);
@@ -620,7 +652,7 @@ async function run4pGame(session: GameSession): Promise<void> {
 					type: "error",
 					data: { seat, error: `${seatName}: ${errMsg}` },
 				});
-				return;
+				action = weakestLegalAction(obs2p);
 			}
 		}
 
@@ -643,13 +675,15 @@ async function run4pGame(session: GameSession): Promise<void> {
 		// Pause after AI plays so the card animation is visible
 		if (agent !== null) {
 			if (action.type === ActionType.PLAY_CARD) await gameDelay(session, 700);
-			else await gameDelay(session, 1000);
+			else if (action.type === ActionType.FOLD) await gameDelay(session, 400);
+			else await gameDelay(session, 800);
 		}
 
 		if (result.roundDone) {
 			console.log(`[game] Round end — scores: ${result.scores[0]}-${result.scores[1]}`);
+			const wasFold4p = action.type === ActionType.FOLD;
 			session.events.push({ type: "trick_end", data: session.snapshot });
-			await gameDelay(session, 1200);
+			await gameDelay(session, wasFold4p ? 300 : 1200);
 			session.events.push({
 				type: "round_end",
 				data: { winner: result.roundWinner, scores: result.scores },
@@ -679,7 +713,7 @@ async function run4pGame(session: GameSession): Promise<void> {
 				session.events.push({ type: "round_pause", data: { scores: result.scores } });
 				await waitForContinue(session);
 			} else {
-				await gameDelay(session, 800);
+				await gameDelay(session, 500);
 			}
 		}
 		if (result.done) {

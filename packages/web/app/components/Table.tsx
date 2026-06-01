@@ -1,16 +1,19 @@
 "use client";
 
 import type { GameConfig, PlayerConfig, ProviderMode } from "@/lib/game-manager";
+import { computeAggregateStats, getGameHistory } from "@/lib/game-history";
 import { LOCALES, type Locale, detectLocale, saveLocale, t, toPromptLang } from "@/lib/i18n";
 import { useEffect, useMemo, useState } from "react";
 import { GameBoard } from "./GameBoard";
-import { Seat } from "./Seat";
 import { LobbyBackground } from "./LobbyBackground";
+import { NewspaperBg } from "./NewspaperBg";
 import {
 	HuggingFaceIcon,
 	OpenRouterIcon,
 	VercelIcon,
 } from "./ProviderIcons";
+import { RansomLabel, RansomTitle } from "./RansomTitle";
+import { Seat } from "./Seat";
 import { ALL_AGENTS, type GatewayModel, SeatPicker, agentToConfig } from "./SeatPicker";
 import { addToast } from "./Toast";
 
@@ -33,13 +36,13 @@ const TEMPLATES: TableTemplate[] = [
 	{
 		labelKey: "preset.youPlus3Ai",
 		descKey: "preset.youPlus3AiHint",
-		seats: ["human", "claude-sonnet-4.6", "gemini-2.5-flash", "gpt-4o"],
+		seats: ["human", "claude-haiku-4.5", "gemini-2.5-flash", "gpt-4o-mini"],
 		needsKeys: true,
 	},
 	{
 		labelKey: "preset.aiBattle",
 		descKey: "preset.aiBattleHint",
-		seats: ["claude-sonnet-4.6", "gpt-4o", "gemini-2.5-pro", "deepseek-r1"],
+		seats: ["claude-haiku-4.5", "gpt-4o-mini", "gemini-2.5-flash", "deepseek-r1"],
 		needsKeys: true,
 	},
 ];
@@ -89,18 +92,40 @@ export function Table() {
 			.catch(() => setClaudeAvailable(false));
 	}, []);
 
+	// First-visit detection
+	const [firstVisit, setFirstVisit] = useState(true);
+	useEffect(() => {
+		const visited = localStorage.getItem("trucobench-visited");
+		if (visited) setFirstVisit(false);
+	}, []);
+	function markVisited() {
+		localStorage.setItem("trucobench-visited", "1");
+		setFirstVisit(false);
+	}
+
 	// Table state
 	const [seats, setSeats] = useState<(string | null)[]>([null, null, null, null]);
 	const [pickerSeat, setPickerSeat] = useState<number | null>(null);
+	const [activeTemplate, setActiveTemplate] = useState<number | null>(null);
 
 	// Settings (on table surface)
-	const [turnTimeout, setTurnTimeout] = useState(60);
+	const [turnTimeout, setTurnTimeout] = useState(30);
 	const [promptMode, setPromptMode] = useState<"economy" | "minimal" | "standard" | "verbose">(
-		"standard",
+		"economy",
 	);
+	const [showAdvanced, setShowAdvanced] = useState(false);
 	const [temperature, setTemperature] = useState(0.7);
+	const TRUCO_TIMING_OPTIONS = ["after-first-trick", "after-first-card", "anytime"] as const;
+	type TrucoTimingOption = (typeof TRUCO_TIMING_OPTIONS)[number];
+	const [trucoTiming, setTrucoTiming] = useState<TrucoTimingOption>("after-first-trick");
+	function cycleTrucoTiming() {
+		setTrucoTiming((prev) => {
+			const idx = TRUCO_TIMING_OPTIONS.indexOf(prev);
+			return TRUCO_TIMING_OPTIONS[(idx + 1) % TRUCO_TIMING_OPTIONS.length]!;
+		});
+	}
 	const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
-	const [providerMode, setProviderModeRaw] = useState<ProviderMode>("direct");
+	const [providerMode, setProviderModeRaw] = useState<ProviderMode>("vercel-gateway");
 
 	// Hydrate from localStorage after mount (avoids SSR mismatch)
 	useEffect(() => {
@@ -184,7 +209,13 @@ export function Table() {
 	const is2p = useMemo(() => Boolean(seats[0] && seats[1] && !seats[2] && !seats[3]), [seats]);
 	const mode = is2p ? "2p" : "4p";
 	const isPlaying = gameId !== null && config !== null;
-	const templatesVisible = seats.every((s) => s === null) && !isPlaying;
+	const noSeats = seats.every((s) => s === null);
+	const templatesVisible = noSeats && !isPlaying;
+
+	// Reset activeTemplate when all seats are cleared
+	useEffect(() => {
+		if (noSeats) setActiveTemplate(null);
+	}, [noSeats]);
 
 	// Key validation: which LLM seats are missing keys?
 	const missingKeySeats = useMemo(
@@ -238,8 +269,18 @@ export function Table() {
 		});
 	}
 
-	function applyTemplate(tmpl: TableTemplate) {
+	function applyTemplate(tmpl: TableTemplate, index: number) {
 		setSeats(tmpl.seats.map((s) => s || null));
+		setActiveTemplate(index);
+	}
+
+	function switchTemplate(index: number) {
+		setSeats([null, null, null, null]);
+		const tmpl = TEMPLATES[index];
+		if (tmpl) {
+			setSeats(tmpl.seats.map((s) => s || null));
+			setActiveTemplate(index);
+		}
 	}
 
 	// Deal (start game)
@@ -275,6 +316,7 @@ export function Table() {
 			providerMode,
 			turnTimeoutMs: turnTimeout * 1000,
 			apiKeys: Object.fromEntries(Object.entries(apiKeys).filter(([_, v]) => v)),
+			trucoTiming,
 		};
 
 		try {
@@ -291,6 +333,7 @@ export function Table() {
 			const { id } = await res.json();
 			setConfig(cfg);
 			setGameId(id);
+			markVisited();
 			addToast("success", "Game started!");
 		} catch (err) {
 			addToast("error", err instanceof Error ? err.message : "Failed to connect to server.");
@@ -303,6 +346,29 @@ export function Table() {
 		setGameId(null);
 		setConfig(null);
 		setStarting(false);
+	}
+
+	async function rematch() {
+		if (!config || starting) return;
+		setStarting(true);
+		try {
+			const res = await fetch("/api/game", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(config),
+			});
+			if (!res.ok) {
+				addToast("error", "Failed to start rematch");
+				return;
+			}
+			const { id } = await res.json();
+			setGameId(id);
+			addToast("success", "Game started!");
+		} catch {
+			addToast("error", "Failed to connect to server.");
+		} finally {
+			setStarting(false);
+		}
 	}
 
 	function changeTable() {
@@ -347,349 +413,569 @@ export function Table() {
 		setProviderMode(PROVIDER_MODES[(idx + 1) % PROVIDER_MODES.length]!);
 	}
 
+	// Multiplayer P2P state
+	const [p2pRoom, setP2pRoom] = useState<import("@/lib/p2p").P2PRoom | null>(null);
+	const [p2pLobby, setP2pLobby] = useState<import("@/lib/p2p").LobbyState | null>(null);
+	const [p2pJoinCode, setP2pJoinCode] = useState("");
+	const [p2pConnecting, setP2pConnecting] = useState(false);
+	const [p2pError, setP2pError] = useState<string | null>(null);
+	const [showMultiplayer, setShowMultiplayer] = useState(false);
+
+	async function createP2PRoom() {
+		setP2pConnecting(true);
+		setP2pError(null);
+		try {
+			const { P2PRoom } = await import("@/lib/p2p");
+			const room = new P2PRoom("host");
+			room.onLobby((lobby) => setP2pLobby({ ...lobby }));
+			room.onStatus((status) => {
+				if (status === "disconnected") {
+					addToast("error", "Connection lost");
+				}
+			});
+			await room.createRoom();
+			setP2pRoom(room);
+			setP2pLobby({ ...room.lobby });
+			setShowMultiplayer(true);
+		} catch (err) {
+			setP2pError(err instanceof Error ? err.message : "Failed to create room");
+		} finally {
+			setP2pConnecting(false);
+		}
+	}
+
+	async function joinP2PRoom() {
+		if (!p2pJoinCode.trim()) return;
+		setP2pConnecting(true);
+		setP2pError(null);
+		try {
+			const { P2PRoom } = await import("@/lib/p2p");
+			const room = new P2PRoom("guest", p2pJoinCode.trim().toUpperCase());
+			room.onLobby((lobby) => setP2pLobby({ ...lobby }));
+			room.onStatus((status) => {
+				if (status === "playing") {
+					// Game started by host — build config from lobby
+					const players = room.lobby.seats.map((s) => s ?? { type: "random" as const, name: "Random" });
+					const cfg: GameConfig = {
+						players,
+						prompt: promptMode,
+						language: toPromptLang(locale),
+						temperature,
+						providerMode: "direct",
+						turnTimeoutMs: turnTimeout * 1000,
+						apiKeys: {},
+					};
+					setConfig(cfg);
+					setGameId(`p2p-${room.code}`);
+					markVisited();
+				}
+				if (status === "disconnected") {
+					addToast("error", "Host disconnected");
+				}
+			});
+			await room.joinRoom();
+			setP2pRoom(room);
+			setP2pLobby({ ...room.lobby });
+			setShowMultiplayer(true);
+		} catch (err) {
+			setP2pError(err instanceof Error ? err.message : "Failed to join room");
+		} finally {
+			setP2pConnecting(false);
+		}
+	}
+
+	async function startP2PGame() {
+		if (!p2pRoom || p2pRoom.role !== "host") return;
+		const players = p2pRoom.lobby.seats.map((s) => s ?? { type: "random" as const, name: "Random" });
+		const cfg: GameConfig = {
+			players,
+			prompt: promptMode,
+			language: toPromptLang(locale),
+			temperature,
+			providerMode: "direct",
+			turnTimeoutMs: turnTimeout * 1000,
+			apiKeys: {},
+			trucoTiming,
+		};
+		setConfig(cfg);
+		setGameId(`p2p-${p2pRoom.code}`);
+		markVisited();
+		// Start the game loop on host
+		p2pRoom.startGame({
+			prompt: promptMode,
+			language: toPromptLang(locale),
+			temperature,
+			providerMode: "direct",
+			turnTimeoutMs: turnTimeout * 1000,
+			trucoTiming,
+			seed: undefined,
+		});
+	}
+
+	function leaveP2P() {
+		p2pRoom?.destroy();
+		setP2pRoom(null);
+		setP2pLobby(null);
+		setShowMultiplayer(false);
+		setP2pError(null);
+		setP2pJoinCode("");
+		resetTable();
+	}
+
+	// Gameplay settings overlay
+	const [showGameplaySettings, setShowGameplaySettings] = useState(false);
+	const [confirmLeave, setConfirmLeave] = useState(false);
+
+	function handleBack() {
+		setConfirmLeave(true);
+	}
+
+	function doLeave() {
+		setConfirmLeave(false);
+		changeTable();
+	}
+
 	/* ── Render: Playing state ── */
 	if (isPlaying) {
 		return (
-			<div className="h-screen flex flex-col p-2 sm:p-3 gap-1.5 sm:gap-2 relative" data-ui>
+			<div className="h-screen flex flex-col p-2 sm:p-3 gap-1.5 sm:gap-2 relative anim-view-enter" data-ui>
 				<LobbyBackground mode="gameplay" />
-				<header className="flex items-center justify-between px-1 relative z-10">
-					<h1 className="text-sm sm:text-base font-bold font-display">
-						TrucoBench
-					</h1>
-					<div className="flex items-center gap-2">
-						<GitHubLink />
-						<SoundToggle />
-						<ThemeToggle />
-						<LocaleToggle locale={locale} onChange={changeLocale} />
+				{/* Minimal gameplay header */}
+				<header className="flex items-center justify-between px-1 relative z-10 min-h-[48px]">
+					<button
+						type="button"
+						onClick={handleBack}
+						className="w-9 h-9 min-h-[44px] min-w-[44px] flex items-center justify-center rounded text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
+						aria-label={t(locale, "game.backToLobby")}
+					>
+						<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+							<path d="M19 12H5M12 19l-7-7 7-7" />
+						</svg>
+					</button>
+					<div className="flex-1" />
+					<button
+						type="button"
+						onClick={() => setShowGameplaySettings((p) => !p)}
+						className="w-9 h-9 min-h-[44px] min-w-[44px] flex items-center justify-center rounded text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
+						aria-label={t(locale, "advanced.toggle")}
+					>
+						<svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+							<path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Zm7.43-2.53c.04-.32.07-.64.07-.97s-.03-.66-.07-.97l2.11-1.65a.5.5 0 0 0 .12-.64l-2-3.46a.5.5 0 0 0-.61-.22l-2.49 1a7.13 7.13 0 0 0-1.67-.97l-.38-2.65A.49.49 0 0 0 14 2h-4a.49.49 0 0 0-.49.42l-.38 2.65c-.61.25-1.17.59-1.67.97l-2.49-1a.5.5 0 0 0-.61.22l-2 3.46a.49.49 0 0 0 .12.64l2.11 1.65c-.04.32-.07.65-.07.97s.03.66.07.97l-2.11 1.65a.5.5 0 0 0-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.5.38 1.06.72 1.67.97l.38 2.65c.05.24.26.42.49.42h4c.24 0 .44-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.67-.97l2.49 1c.22.08.49 0 .61-.22l2-3.46a.5.5 0 0 0-.12-.64l-2.11-1.65Z" />
+						</svg>
+					</button>
+				</header>
+				{/* Settings overlay */}
+				{showGameplaySettings && (
+					<div className="absolute top-14 right-2 z-30 bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-2xl p-3 flex flex-col gap-2 min-w-[180px] anim-fade">
+						<div className="flex items-center gap-2">
+							<SoundToggle />
+							<ThemeToggle />
+							<LocaleToggle locale={locale} onChange={changeLocale} />
+						</div>
 						<button
 							type="button"
-							onClick={changeTable}
-							className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
+							onClick={() => { setShowGameplaySettings(false); changeTable(); }}
+							className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors text-left px-2 py-1.5 rounded hover:bg-[var(--surface-2)] min-h-[44px]"
 						>
 							{t(locale, "game.newGame")}
 						</button>
 					</div>
-				</header>
+				)}
+				{/* Leave confirmation */}
+				{confirmLeave && (
+					<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" role="dialog" aria-modal="true" aria-labelledby="leave-dialog-title" onClick={() => setConfirmLeave(false)} onKeyDown={(e) => e.key === "Escape" && setConfirmLeave(false)}>
+						<div className="torn-paper p-4 flex flex-col gap-3 items-center min-w-[200px]" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+							<p id="leave-dialog-title" className="text-sm font-bold">{t(locale, "game.leaveConfirm")}</p>
+							<div className="flex gap-2">
+								<button type="button" onClick={doLeave} className="px-4 py-2 rounded bg-[var(--accent)] text-white text-xs font-bold min-h-[44px]">
+									{t(locale, "game.backToLobby")}
+								</button>
+								<button type="button" onClick={() => setConfirmLeave(false)} className="px-4 py-2 rounded bg-[var(--surface-2)] text-[var(--text-muted)] text-xs font-bold min-h-[44px]">
+									{t(locale, "game.logClose")}
+								</button>
+							</div>
+						</div>
+					</div>
+				)}
 				<main className="flex-1 min-h-0 relative z-10">
-					<GameBoard gameId={gameId} config={config} onNewGame={resetTable} locale={locale} />
+					<GameBoard gameId={gameId} config={config} onNewGame={p2pRoom ? leaveP2P : resetTable} onRematch={p2pRoom ? undefined : rematch} locale={locale} p2pRoom={p2pRoom} />
 				</main>
 			</div>
 		);
 	}
 
-	/* ── Helper: render a seat row (used in mobile layout) ── */
-	function renderSeatRow(idx: number, label: string, fullWidth = true) {
-		const player = seats[idx] ? agentToConfig(seats[idx]!, locale) : null;
+	/* ── Render: Multiplayer lobby ── */
+	if (showMultiplayer && p2pRoom && p2pLobby && !isPlaying) {
+		const p2pFilledCount = p2pLobby.seats.filter(Boolean).length;
+		const canStart = p2pRoom.role === "host" && p2pFilledCount >= 2;
 		return (
-			<div
-				key={idx}
-				onClick={() => setPickerSeat(idx)}
-				onKeyDown={(e) => {
-					if (e.key === "Enter" || e.key === " ") {
-						e.preventDefault();
-						setPickerSeat(idx);
-					}
-				}}
-				role="button"
-				tabIndex={0}
-				className={`${fullWidth ? "w-full" : "flex-1"} flex items-center gap-3 px-3 py-3 rounded-xl border-2 transition-colors min-h-[56px] cursor-pointer ${
-					player
-						? "border-[var(--border)] bg-[var(--surface)]"
-						: "border-dashed border-[var(--border)] hover:border-[var(--text-dim)]"
-				}`}
-				style={
-					player ? { borderColor: idx % 2 === 0 ? "var(--team-a)" : "var(--team-b)" } : undefined
-				}
-			>
-				{player ? (
-					<Seat
-						index={idx}
-						player={player}
-						state="filled"
-						locale={locale}
-						onTap={() => setPickerSeat(idx)}
-						onRemove={() => removeSeat(idx)}
-					/>
-				) : (
-					<>
-						<span className="text-lg text-[var(--text-dim)]">+</span>
-						<div className="text-left">
-							<span className="text-xs text-[var(--text-muted)] block">{label}</span>
-							<span className="text-[11px] text-[var(--text-dim)]">
-								{t(locale, "seat.tapToFill")}
-							</span>
-						</div>
-					</>
-				)}
+			<div className="min-h-screen flex flex-col items-center justify-center relative anim-view-enter p-4" data-ui>
+				<NewspaperBg />
+				<div className="relative z-10 w-full max-w-md flex flex-col items-center gap-6">
+					<div className="torn-paper px-6 py-3 text-center" style={{ transform: "rotate(-1deg)" }}>
+						<RansomTitle text="Multiplayer" className="text-2xl" />
+					</div>
+
+					{/* Room code */}
+					<div className="torn-paper px-5 py-3 flex flex-col items-center gap-2">
+						<span className="text-xs text-[var(--text-dim)]">Room Code</span>
+						<span className="text-2xl font-mono font-bold tracking-widest text-[var(--accent)]">{p2pLobby.code}</span>
+						<button
+							type="button"
+							onClick={() => { navigator.clipboard.writeText(p2pLobby.code); addToast("success", "Code copied!"); }}
+							className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
+						>
+							Copy
+						</button>
+					</div>
+
+					{/* Seats */}
+					<div className="grid grid-cols-2 gap-3 w-full">
+						{p2pLobby.seats.map((s, i) => {
+							const teamColor = i % 2 === 0 ? "var(--team-a)" : "var(--team-b)";
+							const posLabels = ["South", "West", "North", "East"];
+							const isHost = i === p2pLobby.hostSeat;
+							return (
+								<div
+									key={i}
+									className="torn-paper p-3 flex flex-col items-center gap-1.5"
+									style={{ borderColor: teamColor }}
+								>
+									<span className="text-[9px] text-[var(--text-dim)]">{posLabels[i]} {i % 2 === 0 ? "(Team A)" : "(Team B)"}</span>
+									{s ? (
+										<>
+											<span className="text-sm font-semibold" style={{ color: teamColor }}>
+												{s.type === "human" ? (isHost ? "Host" : s.name ?? "Player") : s.type === "heuristic" ? "Bot" : "Random"}
+											</span>
+											{p2pRoom.role === "host" && !isHost && (
+												<button
+													type="button"
+													onClick={() => p2pRoom.removeSeat(i)}
+													className="text-[10px] text-[var(--red)] hover:underline"
+												>
+													Remove
+												</button>
+											)}
+										</>
+									) : (
+										<div className="flex flex-col items-center gap-1">
+											{p2pRoom.role === "host" ? (
+												<div className="flex gap-1">
+													<button
+														type="button"
+														onClick={() => p2pRoom.fillSeatWithAI(i, "heuristic")}
+														className="text-[10px] px-2 py-1 rounded bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
+													>
+														+Bot
+													</button>
+													<button
+														type="button"
+														onClick={() => p2pRoom.fillSeatWithAI(i, "random")}
+														className="text-[10px] px-2 py-1 rounded bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
+													>
+														+Random
+													</button>
+												</div>
+											) : (
+												<button
+													type="button"
+													onClick={() => p2pRoom.pickSeat(i)}
+													className="text-xs px-3 py-1.5 rounded bg-[var(--accent)] text-white font-semibold hover:opacity-90 transition-opacity"
+												>
+													Sit Here
+												</button>
+											)}
+											<span className="text-[10px] text-[var(--text-dim)]">Waiting...</span>
+										</div>
+									)}
+								</div>
+							);
+						})}
+					</div>
+
+					{/* Connected peers count */}
+					<span className="text-xs text-[var(--text-dim)]">
+						{p2pFilledCount} / 4 seats filled
+					</span>
+
+					{/* Actions */}
+					<div className="flex gap-3">
+						{canStart && (
+							<button
+								type="button"
+								onClick={startP2PGame}
+								className="torn-paper tape px-6 py-2 text-center hover:scale-105 transition-transform cursor-pointer"
+								style={{ "--tape-r": "-1deg", "--tape-color": "var(--green)" } as React.CSSProperties}
+							>
+								<RansomTitle text={t(locale, "game.deal")} className="text-lg pt-1" />
+							</button>
+						)}
+						<button
+							type="button"
+							onClick={leaveP2P}
+							className="px-4 py-2 rounded bg-[var(--surface-2)] text-[var(--text-muted)] text-xs font-bold min-h-[44px] hover:text-[var(--text)] transition-colors"
+						>
+							Leave
+						</button>
+					</div>
+				</div>
 			</div>
 		);
 	}
 
-	/* ── Settings pills (shared between mobile & desktop) ── */
-	const settingsPills = (
-		<div data-shape-mask className="flex flex-wrap items-center justify-center gap-1.5" role="group" aria-label="Game settings">
-			<button
-				type="button"
-				onClick={cycleProvider}
-				className={`px-2.5 py-1.5 rounded-lg text-[11px] transition-colors min-h-[44px] inline-flex items-center gap-1.5 ${
-					isUnifiedMode
-						? "bg-[var(--green)]/20 text-[var(--green-light)] hover:bg-[var(--green)]/30"
-						: "bg-[var(--surface)]/50 text-[var(--text-muted)] hover:bg-[var(--surface)]/70 hover:text-[var(--text)]"
-				}`}
-				aria-label={`Provider mode: ${PROVIDER_MODE_LABELS[providerMode] ?? providerMode}`}
-				title={t(locale, "provider.tip")}
-			>
-				{PROVIDER_MODE_ICONS[providerMode]}
-				{PROVIDER_MODE_LABELS[providerMode] ?? providerMode}
-			</button>
-			<button
-				type="button"
-				onClick={cycleTimer}
-				className="px-2.5 py-1.5 rounded-lg bg-[var(--surface)]/80 text-[11px] text-[var(--text-muted)] hover:bg-[var(--surface)] hover:text-[var(--text)] transition-colors min-h-[44px]"
-				aria-label={`Turn timeout: ${turnTimeout > 0 ? `${turnTimeout} seconds` : "no limit"}`}
-				title={t(locale, "advanced.timerTip")}
-			>
-				{turnTimeout > 0 ? `\u23f1 ${turnTimeout}s` : `\u23f1 ${t(locale, "advanced.noLimit")}`}
-			</button>
-			<button
-				type="button"
-				onClick={cyclePrompt}
-				className="px-2.5 py-1.5 rounded-lg bg-[var(--surface)]/80 text-[11px] text-[var(--text-muted)] hover:bg-[var(--surface)] hover:text-[var(--text)] transition-colors min-h-[44px]"
-				aria-label={`Prompt mode: ${promptMode}`}
-				title={t(locale, "advanced.promptTip")}
-			>
-				{t(locale, `prompt.${promptMode}`)}
-			</button>
-			<button
-				type="button"
-				onClick={() =>
-					setTemperature((prev) => {
-						const next = Math.round((prev + 0.1) * 10) / 10;
-						return next > 1 ? 0 : next;
-					})
-				}
-				className="px-2.5 py-1.5 rounded-lg bg-[var(--surface)]/80 text-[11px] text-[var(--text-muted)] hover:bg-[var(--surface)] hover:text-[var(--text)] transition-colors min-h-[44px] tabular-nums"
-				aria-label={`Temperature: ${temperature.toFixed(1)}`}
-				title={t(locale, "advanced.tempTip")}
-			>
-				T:{temperature.toFixed(1)}
-			</button>
-		</div>
-	);
-
-	/* ── Templates row (shared) ── */
-	const templatesRow = templatesVisible && (
-		<div className="flex flex-col sm:flex-row flex-wrap gap-2 justify-center w-full">
-			{TEMPLATES.map((tmpl) => (
-				<button
-					type="button"
-					key={tmpl.labelKey}
-					onClick={() => applyTemplate(tmpl)}
-					className="flex-1 min-w-0 px-4 py-3 rounded-lg bg-[var(--surface)]/60 border border-[var(--table-border)] hover:bg-[var(--surface)]/80 transition-colors min-h-[44px] text-left"
-				>
-					<span className="text-xs font-semibold text-[var(--text-muted)] block">
-						{t(locale, tmpl.labelKey)}
-					</span>
-					<span className="text-[10px] text-[var(--text-dim)]">{t(locale, tmpl.descKey)}</span>
-				</button>
-			))}
-		</div>
-	);
-
-	/* ── Deal button (shared) ── */
-	const dealSection = !templatesVisible && filledCount >= 2 && (
-		<div className="flex flex-col items-center gap-1.5 w-full sm:w-auto">
-			{/* Missing keys warning */}
-			{missingKeySeats.length > 0 && (
-				<p className="text-xs text-center bg-[var(--surface)]/80 text-[var(--gold)] border border-[var(--gold)]/30 rounded-lg px-3 py-1.5">
-					{isUnifiedMode
-						? `${providerMode === "openrouter" ? "OpenRouter" : providerMode === "huggingface" ? "Hugging Face" : "Vercel Gateway"} key needed — tap any LLM seat to add`
-						: `${missingKeySeats.map((m) => m.model).join(", ")} — tap seat to add API key`}
-				</p>
-			)}
-			<button
-				type="button"
-				onClick={deal}
-				disabled={starting || missingKeySeats.length > 0}
-				data-trigger-wave
-				className={`w-full sm:w-auto px-8 py-3 rounded-xl font-bold text-sm transition-colors shadow-lg min-h-[44px] ${
-					missingKeySeats.length > 0
-						? "bg-[var(--surface-3)] text-[var(--text-dim)] cursor-not-allowed"
-						: "bg-[var(--accent)] text-white hover:bg-[var(--accent-light)] disabled:opacity-50"
-				}`}
-			>
-				{starting ? t(locale, "start.starting") : t(locale, "table.deal")}
-			</button>
-		</div>
-	);
-
-	/* ── Render: Table (empty/seated states) ── */
+	/* ── Render: Lobby (magazine cut-out theme) ── */
 	return (
-		<div
-			className="h-screen flex flex-col p-4 sm:p-6 sm:items-center sm:justify-center relative"
-			data-ui
-		>
+		<div className="min-h-screen flex flex-col items-center relative anim-view-enter" data-ui>
+			<NewspaperBg />
 			<LobbyBackground />
-			{/* Header — mobile: top bar with branding + locale */}
-			<div className="flex items-center justify-between mb-4 sm:absolute sm:top-6 sm:right-6 sm:mb-0 relative z-10">
-				<h1 className="text-xl font-bold text-[var(--text)]/80 sm:hidden font-display">
-					TrucoBench
-				</h1>
-				<div className="flex items-center gap-2">
-					<GitHubLink />
-					<SoundToggle />
-					<ThemeToggle />
-					<LocaleToggle locale={locale} onChange={changeLocale} />
+
+			{/* Main content — Layout: Logo+text → Table (with deal btn) → Game modes → Settings */}
+			<main className="flex-1 flex flex-col items-center justify-center gap-4 sm:gap-6 w-full max-w-2xl px-4 relative z-10 py-2">
+			{/* Missing keys warning (below table) */}
+			{missingKeySeats.length > 0 && filledCount >= 2 && (
+				<div className="torn-paper px-4 py-2 text-center max-w-md" style={{ "--torn-bg": "var(--surface)" } as React.CSSProperties}>
+					<p className="text-xs text-[var(--gold)] flex items-center justify-center gap-1.5">
+						<svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+							<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
+						</svg>
+						{isUnifiedMode
+							? `${providerMode === "openrouter" ? "OpenRouter" : providerMode === "huggingface" ? "Hugging Face" : "Vercel Gateway"} key needed — tap any LLM seat to add`
+							: `${missingKeySeats.map((m) => m.model).join(", ")} — tap seat to add API key`}
+					</p>
 				</div>
-			</div>
-
-			{/* ── MOBILE layout (<640px): table + controls below ── */}
-			<div className="flex-1 flex flex-col gap-4 overflow-y-auto sm:hidden relative z-10">
-				{/* Templates (above the table) */}
-				{templatesRow}
-
-				{/* The table — seats at cardinal positions, straddling edges like desktop */}
-				<div data-shape-mask className="relative bg-[var(--table)] rounded-2xl border-2 border-[var(--table-border)] shadow-xl aspect-[4/3] max-w-[min(280px,85vw)] w-full mx-auto flex items-center justify-center overflow-visible my-14">
+			)}
+				{/* The table with seats — deal button in center */}
+				<div
+					className="relative bg-[var(--table)] rounded-[2rem] sm:rounded-[3rem] border-4 sm:border-[6px] border-[var(--table-border)] shadow-2xl aspect-[4/3] w-full max-w-[min(360px,90vw)] sm:max-w-md flex items-center justify-center overflow-visible my-10 sm:my-14"
+					style={{
+						boxShadow: "4px 6px 20px rgba(50,40,20,0.3), inset 0 2px 8px rgba(255,255,255,0.05)",
+					}}
+				>
+					{/* Felt texture — gradient + grain */}
 					<div
-						className="absolute inset-0 rounded-2xl opacity-10 pointer-events-none"
+						className="absolute inset-0 rounded-[2rem] sm:rounded-[3rem] opacity-15 pointer-events-none"
 						style={{
-							background:
-								"radial-gradient(ellipse at center, var(--table-light) 0%, transparent 70%)",
+							background: "radial-gradient(ellipse at center, var(--table-light) 0%, transparent 70%)",
 						}}
 					/>
-					{/* Seats at edges — matching desktop positions */}
-					<div className="absolute -top-12 left-1/2 -translate-x-1/2 scale-[0.8]">
-						<Seat
-							index={2}
-							player={seats[2] ? agentToConfig(seats[2]!, locale) : null}
-							state={seats[2] ? "filled" : "empty"}
-							locale={locale}
-							onTap={() => setPickerSeat(2)}
-							onRemove={seats[2] ? () => removeSeat(2) : undefined}
-						/>
-					</div>
-					<div className="absolute -left-10 top-1/2 -translate-y-1/2 scale-[0.8]">
-						<Seat
-							index={1}
-							player={seats[1] ? agentToConfig(seats[1]!, locale) : null}
-							state={seats[1] ? "filled" : "empty"}
-							locale={locale}
-							onTap={() => setPickerSeat(1)}
-							onRemove={seats[1] ? () => removeSeat(1) : undefined}
-						/>
-					</div>
-					<div className="absolute -right-10 top-1/2 -translate-y-1/2 scale-[0.8]">
-						<Seat
-							index={3}
-							player={seats[3] ? agentToConfig(seats[3]!, locale) : null}
-							state={seats[3] ? "filled" : "empty"}
-							locale={locale}
-							onTap={() => setPickerSeat(3)}
-							onRemove={seats[3] ? () => removeSeat(3) : undefined}
-						/>
-					</div>
-					<div className="absolute -bottom-12 left-1/2 -translate-x-1/2 scale-[0.8]">
-						<Seat
-							index={0}
-							player={seats[0] ? agentToConfig(seats[0]!, locale) : null}
-							state={seats[0] ? "filled" : "empty"}
-							locale={locale}
-							onTap={() => setPickerSeat(0)}
-							onRemove={seats[0] ? () => removeSeat(0) : undefined}
-						/>
-					</div>
-				</div>
-
-				{/* Settings + Keys + Deal (below the table) */}
-				{settingsPills}
-				{dealSection}
-			</div>
-
-			{/* ── DESKTOP layout (>=640px): spatial table ── */}
-			<div className="hidden sm:flex sm:flex-col sm:items-center sm:gap-6 w-full max-w-2xl relative z-10">
-				<div data-shape-mask className="relative w-full aspect-[3/2] bg-[var(--table)] rounded-3xl border-4 border-[var(--table-border)] shadow-2xl flex items-center justify-center overflow-visible my-16">
-					{/* Felt texture */}
 					<div
-						className="absolute inset-0 rounded-3xl opacity-10 pointer-events-none"
+						className="absolute inset-0 rounded-[2rem] sm:rounded-[3rem] opacity-[0.08] pointer-events-none mix-blend-overlay"
 						style={{
-							background:
-								"radial-gradient(ellipse at center, var(--table-light) 0%, transparent 70%)",
+							backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E")`,
+							backgroundSize: "180px 180px",
 						}}
 					/>
 
 					{/* Seats at cardinal positions */}
 					{(
 						[
-							{ idx: 2, cls: "absolute -top-16 left-1/2 -translate-x-1/2" },
-							{ idx: 1, cls: "absolute -left-14 top-1/2 -translate-y-1/2" },
-							{ idx: 3, cls: "absolute -right-14 top-1/2 -translate-y-1/2" },
-							{ idx: 0, cls: "absolute -bottom-16 left-1/2 -translate-x-1/2" },
+							{ idx: 2, cls: "absolute -top-10 sm:-top-14 left-1/2 -translate-x-1/2", delay: "anim-delay-1" },
+							{ idx: 1, cls: "absolute -left-8 sm:-left-14 top-1/2 -translate-y-1/2", delay: "anim-delay-2" },
+							{ idx: 3, cls: "absolute -right-8 sm:-right-14 top-1/2 -translate-y-1/2", delay: "anim-delay-3" },
+							{ idx: 0, cls: "absolute -bottom-10 sm:-bottom-14 left-1/2 -translate-x-1/2", delay: "anim-delay-4" },
 						] as const
-					).map(({ idx, cls }) => (
-						<div key={idx} className={cls}>
+					).map(({ idx, cls, delay }) => (
+						<div key={idx} className={`${cls} anim-pop-in ${delay}`}>
 							<Seat
 								index={idx}
 								player={seats[idx] ? agentToConfig(seats[idx]!, locale) : null}
 								state={seats[idx] ? "filled" : "empty"}
 								locale={locale}
 								onTap={() => setPickerSeat(idx)}
-								onRemove={seats[idx] ? () => removeSeat(idx) : undefined}
 							/>
 						</div>
 					))}
 
-					{/* Center content */}
+					{/* Center — logo + deal button */}
 					<div className="flex flex-col items-center gap-3 z-10 text-center px-4">
-						<h1 className="text-3xl font-bold text-white/90 font-display drop-shadow-sm">
-							TrucoBench
-						</h1>
-						<p className="text-xs text-white/60">{t(locale, "app.subtitle")}</p>
-						{templatesRow}
-						{settingsPills}
-						{dealSection}
+						<div className="torn-paper px-4 py-2 rounded-sm" style={{ transform: "rotate(-2deg)" }}>
+							<RansomTitle text="TrucoBench" className="text-xl sm:text-2xl" />
+						</div>
+						{canDeal && (
+							<button
+								type="button"
+								onClick={deal}
+								disabled={starting || missingKeySeats.length > 0}
+								data-trigger-wave
+								className="torn-paper px-6 sm:px-8 py-2 transition-all hover:scale-105 min-h-[44px] disabled:opacity-50 anim-pop-in"
+								style={{ transform: "rotate(1deg)" }}
+							>
+								<RansomTitle text={starting ? t(locale, "start.starting") : t(locale, "table.deal")} className="text-lg sm:text-xl" />
+							</button>
+						)}
 					</div>
 				</div>
 
-				{/* API Keys (outside table so inputs aren't z-index trapped) */}
-
-				{/* Help */}
-				<details className="w-full max-w-xl">
-					<summary className="text-xs text-[var(--text-dim)] cursor-pointer hover:text-[var(--text-muted)]">
-						{t(locale, "help.title")}
-					</summary>
-					<div className="mt-2 bg-[var(--surface)] border border-[var(--border)] rounded-lg p-4 text-xs text-[var(--text-muted)] space-y-2 leading-relaxed">
-						<p>{t(locale, "help.p1")}</p>
-						<p>
-							<strong>Manilhas</strong> &mdash; {t(locale, "help.p2")}
-						</p>
-						<p>
-							<strong>Truco</strong> &mdash; {t(locale, "help.p3")}
-						</p>
-						<p>{t(locale, "help.p4")}</p>
+				{/* Game mode selection — below the table */}
+				{firstVisit && templatesVisible ? (
+					<div className="flex flex-col items-center gap-6">
+						<button
+							type="button"
+							onClick={() => applyTemplate(TEMPLATES[0]!, 0)}
+							className="torn-paper tape px-5 py-2 text-center hover:scale-105 transition-transform min-h-[44px] cursor-pointer whitespace-nowrap anim-slide-up anim-delay-2"
+							style={{ "--tape-r": "-1deg", "--tape-color": "var(--green)" } as React.CSSProperties}
+						>
+							<RansomTitle text={t(locale, "hero.cta")} className="text-base pt-2" />
+							<span className="block text-[9px] text-[var(--text-dim)] mt-0.5 whitespace-nowrap">{t(locale, "hero.ctaHint")}</span>
+						</button>
+						<button
+							type="button"
+							onClick={() => setFirstVisit(false)}
+							className="torn-paper tape px-5 py-2 text-center hover:scale-105 transition-transform min-h-[44px] cursor-pointer whitespace-nowrap anim-slide-up anim-delay-3"
+							style={{ "--tape-r": "0.5deg", "--tape-color": "var(--accent)" } as React.CSSProperties}
+						>
+							<RansomTitle text={t(locale, "hero.orChoose")} className="text-sm" />
+						</button>
 					</div>
-				</details>
-			</div>
+				) : templatesVisible ? (
+					<div className="flex flex-col gap-6 items-center">
+						{TEMPLATES.map((tmpl, i) => {
+							const rotations = [-1, 0.5, -0.5];
+							const tapeColors = ["var(--green)", "var(--accent)", "var(--red)"];
+							const delays = ["anim-delay-1", "anim-delay-2", "anim-delay-3"];
+							return (
+								<button
+									type="button"
+									key={tmpl.labelKey}
+									onClick={() => applyTemplate(tmpl, i)}
+									className={`torn-paper tape px-4 py-2 text-center hover:scale-105 transition-transform min-h-[44px] cursor-pointer whitespace-nowrap anim-slide-up ${delays[i] ?? ""}`}
+									style={{ "--tape-r": `${rotations[i] ?? 0}deg`, "--tape-color": tapeColors[i] } as React.CSSProperties}
+								>
+									<RansomTitle text={t(locale, tmpl.labelKey)} className="text-sm sm:text-base pt-2" />
+									<span className="block text-[9px] text-[var(--text-dim)] mt-0.5 whitespace-nowrap">
+										{t(locale, tmpl.descKey)}
+									</span>
+								</button>
+							);
+						})}
+							{/* Multiplayer section */}
+							<div className="flex flex-col items-center gap-2 mt-2 anim-slide-up anim-delay-4">
+								<div className="flex gap-2">
+									<button
+										type="button"
+										onClick={createP2PRoom}
+										disabled={p2pConnecting}
+										className="torn-paper tape px-4 py-2 text-center hover:scale-105 transition-transform min-h-[44px] cursor-pointer whitespace-nowrap disabled:opacity-50"
+										style={{ "--tape-r": "1deg", "--tape-color": "var(--gold)" } as React.CSSProperties}
+									>
+										<RansomTitle text="Create Room" className="text-sm pt-1" />
+										<span className="block text-[9px] text-[var(--text-dim)] mt-0.5">P2P Multiplayer</span>
+									</button>
+								</div>
+								<div className="flex items-center gap-2">
+									<input
+										type="text"
+										value={p2pJoinCode}
+										onChange={(e) => setP2pJoinCode(e.target.value.toUpperCase())}
+										placeholder="TRUCO-XXXX"
+										className="w-32 px-2 py-1.5 rounded bg-[var(--surface-2)] border border-[var(--border)] text-sm text-center font-mono tracking-wider placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--accent)]"
+									/>
+									<button
+										type="button"
+										onClick={joinP2PRoom}
+										disabled={p2pConnecting || !p2pJoinCode.trim()}
+										className="px-3 py-1.5 rounded bg-[var(--accent)] text-white text-xs font-bold min-h-[36px] disabled:opacity-50 hover:opacity-90 transition-opacity"
+									>
+										Join
+									</button>
+								</div>
+								{p2pError && <span className="text-xs text-[var(--red)]">{p2pError}</span>}
+							</div>
+					</div>
+				) : !isPlaying && activeTemplate !== null ? (
+					<div className="flex flex-col items-center gap-2 anim-slide-up">
+						<div className="torn-paper tape px-4 py-1.5 text-center" style={{ "--tape-r": "-1deg" } as React.CSSProperties}>
+							<RansomTitle text={t(locale, TEMPLATES[activeTemplate]!.labelKey)} className="text-sm pt-2" />
+						</div>
+						<button
+							type="button"
+							onClick={() => { setActiveTemplate(null); setSeats([null, null, null, null]); }}
+							className="text-[11px] text-[var(--text-dim)] hover:text-[var(--text-muted)] transition-colors min-h-[44px] inline-flex items-center"
+						>
+							{t(locale, "game.changeSetup")}
+						</button>
+					</div>
+				) : null}
 
-			{/* Help — mobile only (below the list) */}
-			<details className="mt-4 sm:hidden">
-				<summary className="text-xs text-[var(--text-dim)] cursor-pointer hover:text-[var(--text-muted)]">
-					{t(locale, "help.title")}
-				</summary>
-				<div className="mt-2 bg-[var(--surface)] border border-[var(--border)] rounded-lg p-4 text-xs text-[var(--text-muted)] space-y-2 leading-relaxed">
-					<p>{t(locale, "help.p1")}</p>
-					<p>
-						<strong>Manilhas</strong> &mdash; {t(locale, "help.p2")}
-					</p>
-					<p>
-						<strong>Truco</strong> &mdash; {t(locale, "help.p3")}
-					</p>
-					<p>{t(locale, "help.p4")}</p>
+				{/* Controls row — sound, theme, language, advanced in one line */}
+				<div className="flex items-center justify-center gap-2 flex-wrap anim-fade anim-delay-4">
+					<SoundToggle />
+					<ThemeToggle />
+					<LocaleToggle locale={locale} onChange={changeLocale} />
+					<button
+						type="button"
+						onClick={() => setShowAdvanced((p) => !p)}
+						className="w-9 h-9 min-h-[44px] min-w-[44px] flex items-center justify-center rounded bg-[var(--surface-2)] text-[var(--text-dim)] hover:text-[var(--text)] transition-colors"
+						aria-expanded={showAdvanced}
+						aria-label={t(locale, "advanced.toggle")}
+						title={t(locale, "advanced.toggle")}
+					>
+						<svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+							<path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Zm7.43-2.53c.04-.32.07-.64.07-.97s-.03-.66-.07-.97l2.11-1.65a.5.5 0 0 0 .12-.64l-2-3.46a.5.5 0 0 0-.61-.22l-2.49 1a7.13 7.13 0 0 0-1.67-.97l-.38-2.65A.49.49 0 0 0 14 2h-4a.49.49 0 0 0-.49.42l-.38 2.65c-.61.25-1.17.59-1.67.97l-2.49-1a.5.5 0 0 0-.61.22l-2 3.46a.49.49 0 0 0 .12.64l2.11 1.65c-.04.32-.07.65-.07.97s.03.66.07.97l-2.11 1.65a.5.5 0 0 0-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.5.38 1.06.72 1.67.97l.38 2.65c.05.24.26.42.49.42h4c.24 0 .44-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.67-.97l2.49 1c.22.08.49 0 .61-.22l2-3.46a.5.5 0 0 0-.12-.64l-2.11-1.65Z" />
+						</svg>
+					</button>
 				</div>
-			</details>
+				{showAdvanced && (
+					<div className="torn-paper p-3 flex flex-wrap items-center justify-center gap-2 max-w-md" role="group" aria-label="Game settings">
+						<button
+							type="button"
+							onClick={cycleProvider}
+							className={`px-3 py-1.5 rounded text-xs font-bold transition-colors min-h-[36px] inline-flex items-center gap-1.5 ${
+								isUnifiedMode ? "text-[var(--green)] bg-[var(--surface-2)]" : "text-[var(--text)] bg-[var(--surface-2)]"
+							}`}
+							aria-label={`Provider mode: ${PROVIDER_MODE_LABELS[providerMode] ?? providerMode}`}
+							title={t(locale, "provider.tip")}
+						>
+							{PROVIDER_MODE_ICONS[providerMode]}
+							{PROVIDER_MODE_LABELS[providerMode] ?? providerMode}
+						</button>
+						<button
+							type="button"
+							onClick={cycleTimer}
+							className="px-3 py-1.5 rounded text-xs font-bold text-[var(--text)] bg-[var(--surface-2)] transition-colors min-h-[36px]"
+							aria-label={`Turn timeout: ${turnTimeout > 0 ? `${turnTimeout} seconds` : "no limit"}`}
+						>
+							{turnTimeout > 0 ? `${turnTimeout}s` : t(locale, "advanced.noLimit")}
+						</button>
+						<button
+							type="button"
+							onClick={cyclePrompt}
+							className="px-3 py-1.5 rounded text-xs font-bold text-[var(--text)] bg-[var(--surface-2)] transition-colors min-h-[36px]"
+							aria-label={`Prompt mode: ${promptMode}`}
+						>
+							{t(locale, `prompt.${promptMode}`)}
+						</button>
+						<button
+							type="button"
+							onClick={() =>
+								setTemperature((prev) => {
+									const next = Math.round((prev + 0.1) * 10) / 10;
+									return next > 1 ? 0 : next;
+								})
+							}
+							className="px-3 py-1.5 rounded text-xs font-bold text-[var(--text)] bg-[var(--surface-2)] tabular-nums transition-colors min-h-[36px]"
+							aria-label={`Temperature: ${temperature.toFixed(1)}`}
+						>
+							T:{temperature.toFixed(1)}
+						</button>
+						<button
+							type="button"
+							onClick={cycleTrucoTiming}
+							className="px-3 py-1.5 rounded text-xs font-bold text-[var(--text)] bg-[var(--surface-2)] transition-colors min-h-[36px]"
+							aria-label={`${t(locale, "truco.timing")}: ${t(locale, `truco.${trucoTiming === "after-first-trick" ? "afterTrick" : trucoTiming === "after-first-card" ? "afterCard" : "anytime"}`)}`}
+						>
+							{t(locale, `truco.${trucoTiming === "after-first-trick" ? "afterTrick" : trucoTiming === "after-first-card" ? "afterCard" : "anytime"}`)}
+						</button>
+					</div>
+				)}
+
+				{/* Info panel — tabs for Help & Stats */}
+				<InfoPanel locale={locale} />
+			</main>
 
 			{/* Footer */}
-			<footer className="text-center py-3 relative z-10 mt-auto">
-				<div className="flex items-center justify-center gap-3 text-[10px] text-[var(--text-dim)]">
+			<footer className="w-full text-center py-3 relative z-10">
+				<div className="flex items-center justify-center gap-3 text-[10px] text-[var(--text-dim)]" style={{ fontFamily: "Georgia, serif" }}>
 					<span>MIT License</span>
 					<span aria-hidden="true">&middot;</span>
 					<a
@@ -715,9 +1001,11 @@ export function Table() {
 					claudeAvailable={claudeAvailable}
 					providerMode={providerMode}
 					gatewayModels={gatewayModels}
+					currentValue={seats[pickerSeat]}
 					onSetApiKey={setApiKey}
 					onSetProviderMode={setProviderMode}
 					onSelect={(v) => fillSeat(pickerSeat, v)}
+					onRemove={seats[pickerSeat] ? () => removeSeat(pickerSeat) : undefined}
 					onClose={() => setPickerSeat(null)}
 				/>
 			)}
@@ -744,7 +1032,10 @@ function ThemeToggle() {
 		localStorage.setItem("trucobench-theme", next ? "dark" : "light");
 		// Update theme-color meta
 		const meta = document.querySelector('meta[name="theme-color"]');
-		if (meta) meta.setAttribute("content", next ? "#282826" : "#dddac9");
+		if (meta) {
+			const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+			meta.setAttribute("content", bg || (next ? "#282826" : "#dddac9"));
+		}
 	}
 
 	return (
@@ -830,26 +1121,115 @@ function SoundToggle() {
 
 function LocaleToggle({ locale, onChange }: { locale: Locale; onChange: (l: Locale) => void }) {
 	return (
-		<div
-			className="flex gap-0.5 bg-[var(--surface-2)] rounded p-0.5"
-			role="group"
-			aria-label="Language"
-		>
-			{LOCALES.map((l) => (
-				<button
-					type="button"
-					key={l.value}
-					onClick={() => onChange(l.value)}
-					aria-pressed={locale === l.value}
-					className={`px-2.5 py-1.5 rounded text-[11px] font-semibold min-w-[36px] min-h-[44px] transition-colors ${
-						locale === l.value
-							? "bg-[var(--surface-3)] text-[var(--text)]"
-							: "text-[var(--text-dim)] hover:text-[var(--text-muted)]"
-					}`}
-				>
-					{l.native}
-				</button>
-			))}
+		<div className="relative">
+			<select
+				value={locale}
+				onChange={(e) => onChange(e.target.value as Locale)}
+				className="w-9 h-9 min-h-[44px] min-w-[44px] rounded bg-[var(--surface-2)] text-[var(--text-dim)] hover:text-[var(--text)] text-[11px] font-semibold cursor-pointer appearance-none text-center border-none focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition-colors"
+				aria-label="Language"
+			>
+				{LOCALES.map((l) => (
+					<option key={l.value} value={l.value}>
+						{l.native}
+					</option>
+				))}
+			</select>
+		</div>
+	);
+}
+
+/* ── Info panel (Help + Stats in one tabbed card) ───── */
+
+function InfoPanel({ locale }: { locale: Locale }) {
+	const [tab, setTab] = useState<"help" | "stats">("help");
+	const [open, setOpen] = useState(false);
+	const [history, setHistory] = useState<ReturnType<typeof getGameHistory>>([]);
+	useEffect(() => {
+		setHistory(getGameHistory());
+	}, []);
+
+	const stats = useMemo(() => computeAggregateStats(history), [history]);
+	const hasStats = stats.gamesPlayed > 0;
+	const winRate = stats.wins + stats.losses > 0 ? Math.round((stats.wins / (stats.wins + stats.losses)) * 100) : 0;
+
+	return (
+		<div className="w-full max-w-md flex flex-col items-center">
+			<button
+				type="button"
+				onClick={() => setOpen((p) => !p)}
+				className="torn-paper inline-block px-3 py-1.5 text-xs font-bold cursor-pointer hover:scale-105 transition-transform"
+				style={{ transform: "rotate(0.5deg)", fontFamily: "var(--font-ransom-typewriter), 'Special Elite', monospace" }}
+				aria-expanded={open}
+			>
+				{open ? "\u25B4" : "\u25BE"} {t(locale, "info.title")}
+			</button>
+			{open && (
+				<div className="mt-2 torn-paper p-3 sm:p-4 text-xs w-full anim-fade">
+					{/* Tabs */}
+					<div className="flex gap-1 mb-3 border-b border-[var(--border)]/50 pb-2">
+						<button
+							type="button"
+							onClick={() => setTab("help")}
+							className={`px-3 py-1 rounded text-xs font-semibold transition-colors ${tab === "help" ? "bg-[var(--surface-3)] text-[var(--text)]" : "text-[var(--text-dim)] hover:text-[var(--text-muted)]"}`}
+						>
+							{t(locale, "help.title")}
+						</button>
+						{hasStats && (
+							<button
+								type="button"
+								onClick={() => setTab("stats")}
+								className={`px-3 py-1 rounded text-xs font-semibold transition-colors ${tab === "stats" ? "bg-[var(--surface-3)] text-[var(--text)]" : "text-[var(--text-dim)] hover:text-[var(--text-muted)]"}`}
+							>
+								{t(locale, "stats.yourStats")}
+							</button>
+						)}
+					</div>
+					{/* Content */}
+					{tab === "help" && (
+						<div className="text-[var(--text-muted)] space-y-2 leading-relaxed">
+							<p>{t(locale, "help.p1")}</p>
+							<p><strong>Manilhas</strong> &mdash; {t(locale, "help.p2")}</p>
+							<p><strong>Truco</strong> &mdash; {t(locale, "help.p3")}</p>
+							<p>{t(locale, "help.p4")}</p>
+						</div>
+					)}
+					{tab === "stats" && hasStats && (
+						<div className="space-y-2">
+							<div className="flex gap-4">
+								<div>
+									<span className="text-[var(--text-dim)]">{t(locale, "stats.gamesPlayed")}: </span>
+									<strong className="tabular-nums">{stats.gamesPlayed}</strong>
+								</div>
+								<div>
+									<span className="text-[var(--text-dim)]">{t(locale, "stats.winRate")}: </span>
+									<strong className="tabular-nums">{winRate}%</strong>
+									<span className="text-[var(--text-dim)] text-[10px] ml-1">({stats.wins}W {stats.losses}L)</span>
+								</div>
+							</div>
+							{stats.modelRecords.length > 0 && (
+								<div>
+									<p className="text-[var(--text-dim)] mb-1">{t(locale, "stats.modelRankings")}:</p>
+									<div className="space-y-0.5">
+										{stats.modelRecords.slice(0, 5).map((rec, i) => {
+											const total = rec.wins + rec.losses;
+											const pct = total > 0 ? Math.round((rec.wins / total) * 100) : 0;
+											return (
+												<div key={rec.name} className="flex items-center gap-2">
+													<span className="text-[var(--text-dim)] w-4 text-right">{i + 1}.</span>
+													<span className="flex-1 truncate">{rec.name}</span>
+													<span className="tabular-nums text-[var(--text-dim)]">
+														{rec.wins}W {rec.losses}L ({pct}%)
+													</span>
+												</div>
+											);
+										})}
+									</div>
+								</div>
+							)}
+						</div>
+					)}
+				</div>
+			)}
 		</div>
 	);
 }

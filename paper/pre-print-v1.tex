@@ -1,0 +1,68 @@
+\documentclass[11pt]{article}
+
+% --- 1. Packages (Essential for ArXiv quality) ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{multirow}
+\usepackage[numbers]{natbib}
+
+% --- 2. Document Metadata ---
+\title{TrucoBench: Evaluating LLM Strategic Reasoning Through Truco Paulista}
+\author{William Manzoli}
+\date{June 2026}
+
+% --- 3. The Document ---
+\begin{document}
+
+\maketitle
+
+% --- ABSTRACT ---
+\begin{abstract}
+We introduce \textbf{TrucoBench}, the first benchmark for evaluating large language models (LLMs) on Truco Paulista---a popular Latin American card game featuring imperfect information, bluffing, and a unique nested escalation mechanic. Unlike poker-based benchmarks, Truco's escalation system (truco $\to$ seis $\to$ nove $\to$ doze) creates a distinct strategic axis where players must reason about stake-raising, opponent modeling, and fold-or-fight decisions at multiple levels. We evaluate four frontier LLMs across a series of expert diagnostic scenarios and tournaments. Our findings reveal a significant ``Knowing-Doing Gap'': while models like GPT-4o excel at psychological tactics (bluffing/defense), they frequently fail at sequential game-theoretic logic (waste of high-value cards). TrucoBench and all evaluation code are open-source at \url{https://github.com/ManzoliW/trucobench}.
+\end{abstract}
+
+% --- INTRODUCTION ---
+\section{Introduction}
+
+Large language models have demonstrated remarkable capabilities across a wide range of tasks. A growing body of work evaluates LLMs on strategic games---particularly poker---as a testbed for reasoning under uncertainty and deception. However, the focus on poker leaves a gap: many culturally significant card games with distinct strategic properties remain unexplored as LLM benchmarks.
+
+\textbf{Truco Paulista} is one of the most popular card games in Brazil and across Latin America. While it shares imperfect information with poker, it introduces a fundamentally different strategic axis: a \emph{nested escalation mechanic} where players can repeatedly raise the stakes of each round. Each escalation forces the opponent into a three-way decision---accept, counter-raise, or fold---creating a rich space for bluffing and meta-reasoning.
+
+We argue that Truco Paulista offers a complementary evaluation axis:
+\begin{itemize}
+    \item \textbf{Escalation as nested bluffing.} Unlike poker's continuous bet sizing, Truco's discrete escalation chain creates clear decision points for commitment and credibility.
+    \item \textbf{Cultural diversity in AI evaluation.} Benchmarking LLMs on games from diverse cultures helps identify potential biases in strategic reasoning.
+\end{itemize}
+
+% --- RESULTS ---
+\section{Results: Diagnostic Evaluation}
+
+The diagnostic evaluation serves as a luck-independent measure of strategic ``intuition.'' We evaluated four models against a curated set of 9 scenarios covering core Truco Paulista mechanics.
+
+\begin{table}[ht]
+\centering
+\caption{Diagnostic Accuracy Across Truco Strategic Categories (\%)}
+\label{tab:diagnostics}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Model & Overall & Bluff & Defense & Logic & Escalation \\ 
+\midrule
+GPT-4o-mini & 71.1 & 100.0 & 40.0 & 100.0 & 100.0 \\ 
+GPT-4o & 71.1 & 100.0 & 100.0 & 100.0 & 60.0 \\ 
+Heuristic (Baseline) & 36.7 & 30.0 & 0.0 & 100.0 & 100.0 \\ 
+Random (Baseline) & 27.8 & 30.0 & 0.0 & 100.0 & 0.0 \\ 
+\bottomrule
+\end{tabular}
+\end{table}
+
+The results in Table~\ref{tab:diagnostics} reveal a significant discovery: while frontier models exhibit 100\% accuracy in bluffing and defense, they struggle with high-level sequential logic. Specifically, in scenario \texttt{MATH\_001} (Zap Management), models consistently prioritized immediate victory over round security, a sub-optimal play in professional Truco.
+
+\section{Conclusion}
+TrucoBench provides a novel lens through which to evaluate LLM reasoning. Future work will expand to 4-player team dynamics and partner signaling (``sinais'').
+
+\end{document}

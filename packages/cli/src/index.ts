@@ -1,4 +1,6 @@
 import { parseArgs } from "node:util";
+import { readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import {
 	type Agent,
 	AnthropicProvider,
@@ -14,7 +16,15 @@ import {
 	type PromptVariant,
 	RandomAgent,
 	RetryProvider,
+	AiSdkProvider,
 } from "@trucobench/agents";
+
+// Automatically load .env for Node.js environments (Bun does this natively)
+// @ts-ignore - process.loadEnvFile is Node 20.6+
+if (typeof process.loadEnvFile === "function") {
+	if (existsSync(".env")) process.loadEnvFile(".env");
+	if (existsSync(".env.local")) process.loadEnvFile(".env.local");
+}
 import {
 	type AgentFactory,
 	type TournamentConfig,
@@ -24,13 +34,19 @@ import {
 	reportToJSON,
 	reportToMarkdown,
 	runTournament,
+	runTournamentParallel,
+	runDiagnostics,
+	createExampleScenario,
 	saveTournamentResult,
 } from "@trucobench/bench";
+
+type ProviderMode = "native" | "vercel" | "openrouter" | "hf";
 
 interface AgentConfig {
 	prompt: PromptVariant;
 	language: PromptLanguage;
 	temperature: number;
+	mode: ProviderMode;
 }
 
 function createAgent(name: string, cfg: AgentConfig): Agent {
@@ -39,7 +55,7 @@ function createAgent(name: string, cfg: AgentConfig): Agent {
 
 	const promptOptions: PromptOptions = { variant: cfg.prompt, language: cfg.language };
 
-	function llm(provider: LLMProvider): Agent {
+	function wrap(provider: LLMProvider): Agent {
 		return new LLMAgent({
 			provider: new RetryProvider(provider),
 			promptOptions,
@@ -47,14 +63,26 @@ function createAgent(name: string, cfg: AgentConfig): Agent {
 		});
 	}
 
+	// Gateway modes (Vercel, OpenRouter, HF) use AiSdkProvider
+	if (cfg.mode === "vercel") {
+		return wrap(new AiSdkProvider("vercel-gateway", name));
+	}
+	if (cfg.mode === "openrouter") {
+		return wrap(new AiSdkProvider("openrouter", name));
+	}
+	if (cfg.mode === "hf") {
+		return wrap(new AiSdkProvider("huggingface", name));
+	}
+
+	// Native mode: use direct SDKs for better performance/reliability
 	const providerMap: Record<string, () => Agent> = {
-		"gpt-4o": () => llm(new OpenAIProvider("gpt-4o")),
-		"gpt-4o-mini": () => llm(new OpenAIProvider("gpt-4o-mini")),
-		"claude-sonnet-4.6": () => llm(new AnthropicProvider("claude-sonnet-4-6-20260327")),
-		"claude-haiku-4.5": () => llm(new AnthropicProvider("claude-haiku-4-5-20251001")),
-		"gemini-2.5-pro": () => llm(new GoogleProvider("gemini-2.5-pro")),
-		"gemini-2.5-flash": () => llm(new GoogleProvider("gemini-2.5-flash")),
-		"deepseek-r1": () => llm(new DeepSeekProvider("deepseek-reasoner")),
+		"gpt-4o": () => wrap(new OpenAIProvider("gpt-4o")),
+		"gpt-4o-mini": () => wrap(new OpenAIProvider("gpt-4o-mini")),
+		"claude-sonnet-4.6": () => wrap(new AnthropicProvider("claude-sonnet-4-6-20260327")),
+		"claude-haiku-4.5": () => wrap(new AnthropicProvider("claude-haiku-4-5-20251001")),
+		"gemini-2.5-pro": () => wrap(new GoogleProvider("gemini-2.5-pro")),
+		"gemini-2.5-flash": () => wrap(new GoogleProvider("gemini-2.5-flash")),
+		"deepseek-r1": () => wrap(new DeepSeekProvider("deepseek-reasoner")),
 	};
 
 	const factory = providerMap[name];
@@ -62,11 +90,11 @@ function createAgent(name: string, cfg: AgentConfig): Agent {
 
 	if (name.startsWith("ollama/")) {
 		const model = name.slice(7);
-		return llm(new OllamaProvider(model));
+		return wrap(new OllamaProvider(model));
 	}
 
 	throw new Error(
-		`Unknown agent: ${name}. Available: random, heuristic, ${Object.keys(providerMap).join(", ")}, ollama/<model>`,
+		`Unknown agent: ${name} (mode: ${cfg.mode}). Available: random, heuristic, ${Object.keys(providerMap).join(", ")}, ollama/<model>`,
 	);
 }
 
@@ -75,6 +103,7 @@ function parseAgentConfig(values: Record<string, string | boolean | undefined>):
 		prompt: (values.prompt as PromptVariant) || "standard",
 		language: (values.language as PromptLanguage) || "en",
 		temperature: Number.parseFloat((values.temperature as string) || "0.7"),
+		mode: (values.provider as ProviderMode) || "native",
 	};
 }
 
@@ -90,6 +119,7 @@ async function runCommand() {
 			prompt: { type: "string", default: "standard" },
 			language: { type: "string", default: "en" },
 			temperature: { type: "string", default: "0.7" },
+			provider: { type: "string", default: "native" },
 			output: { type: "string" },
 		},
 		allowPositionals: true,
@@ -97,7 +127,7 @@ async function runCommand() {
 
 	if (!values.a || !values.b) {
 		console.error(
-			"Usage: run --a <agent> --b <agent> [--games N] [--prompt standard] [--language en] [--temperature 0.7]",
+			"Usage: run --a <agent> --b <agent> [--games N] [--provider native|vercel|openrouter] [--prompt standard]",
 		);
 		process.exit(1);
 	}
@@ -107,7 +137,7 @@ async function runCommand() {
 	const seed = Number.parseInt(values.seed!, 10);
 
 	console.log(`Running ${gamesCount} games: ${values.a} vs ${values.b}`);
-	console.log(`  prompt=${cfg.prompt} language=${cfg.language} temperature=${cfg.temperature}`);
+	console.log(`  provider=${cfg.mode} prompt=${cfg.prompt} language=${cfg.language} temperature=${cfg.temperature}`);
 
 	const result = await playMatchup(
 		() => createAgent(values.a!, cfg),
@@ -160,8 +190,10 @@ async function tournamentCommand() {
 			prompt: { type: "string", default: "standard" },
 			language: { type: "string", default: "en" },
 			temperature: { type: "string", default: "0.7" },
+			provider: { type: "string", default: "native" },
 			"results-dir": { type: "string", default: "results" },
 			checkpoint: { type: "boolean", default: false },
+			parallel: { type: "string" }, // Concurrency level
 		},
 		allowPositionals: true,
 	});
@@ -172,22 +204,25 @@ async function tournamentCommand() {
 	let baseSeed: number;
 	let duplicate: boolean;
 	let resultsDir: string;
+	let parallelism = values.parallel ? Number.parseInt(values.parallel, 10) : 1;
 	const cfg = parseAgentConfig(values);
 
 	if (values.config) {
-		const raw = await Bun.file(values.config).json();
+		const raw = JSON.parse(await readFile(values.config, "utf-8"));
 		modelNames = raw.agents;
 		gamesPerMatchup = raw.gamesPerMatchup ?? 200;
 		baseSeed = raw.baseSeed ?? 42;
 		duplicate = raw.duplicate ?? true;
 		resultsDir = raw.resultsDir ?? "results";
+		if (raw.parallelism) parallelism = raw.parallelism;
+		if (raw.provider) cfg.mode = raw.provider as ProviderMode;
 		if (raw.prompt) cfg.prompt = raw.prompt;
 		if (raw.language) cfg.language = raw.language;
 		if (raw.temperature) cfg.temperature = raw.temperature;
 	} else {
 		if (!values.models) {
 			console.error(
-				"Usage: tournament --models <a,b,c> --games <n>\n       tournament --config tournament.json",
+				"Usage: tournament --models <a,b,c> --games <n> [--provider vercel]\n       tournament --config tournament.json",
 			);
 			process.exit(1);
 		}
@@ -207,7 +242,7 @@ async function tournamentCommand() {
 		agents: modelNames,
 		gamesPerMatchup,
 		duplicate,
-		parallelism: 1,
+		parallelism,
 		baseSeed,
 	};
 
@@ -217,10 +252,13 @@ async function tournamentCommand() {
 	console.log(
 		`  ${totalMatchups} matchups x ${gamesPerMatchup} games${duplicate ? " (x2 duplicate)" : ""} = ${totalGamesExpected} total games`,
 	);
-	console.log(`  prompt=${cfg.prompt} language=${cfg.language} temperature=${cfg.temperature}`);
+	console.log(`  parallelism=${parallelism} provider=${cfg.mode} prompt=${cfg.prompt} language=${cfg.language} temperature=${cfg.temperature}`);
 
 	const checkpointDir = values.checkpoint ? `${resultsDir}/checkpoint` : undefined;
-	const result = await runTournament(agents, config, checkpointDir);
+	
+	const result = parallelism > 1 
+		? await runTournamentParallel(agents, config, parallelism, checkpointDir)
+		: await runTournament(agents, config, checkpointDir);
 
 	// Save raw results
 	const filepath = saveTournamentResult(resultsDir, result);
@@ -242,10 +280,53 @@ async function tournamentCommand() {
 	}
 
 	if (values.output) {
-		await Bun.write(values.output, output);
+		await writeFile(values.output, output);
 		console.log(`Report written to ${values.output}`);
 	} else {
 		console.log(output);
+	}
+}
+
+async function evalCommand() {
+	const { values } = parseArgs({
+		args: process.argv.slice(2),
+		options: {
+			model: { type: "string" },
+			scenarios: { type: "string" },
+			prompt: { type: "string", default: "standard" },
+			language: { type: "string", default: "en" },
+			temperature: { type: "string", default: "0.7" },
+			provider: { type: "string", default: "native" },
+			output: { type: "string" },
+		},
+		allowPositionals: true,
+	});
+
+	if (!values.model) {
+		console.error("Usage: eval --model <agent> [--provider vercel] [--scenarios <path>]");
+		process.exit(1);
+	}
+
+	const cfg = parseAgentConfig(values);
+	const agent = createAgent(values.model, cfg);
+	
+	let scenarios = [createExampleScenario()];
+	if (values.scenarios) {
+		scenarios = JSON.parse(await readFile(values.scenarios, "utf-8"));
+	}
+
+	console.log(`Evaluating ${values.model} on ${scenarios.length} scenarios...`);
+	const report = await runDiagnostics(agent, scenarios);
+
+	console.log(`\nDiagnostic Results for ${values.model}:`);
+	console.log(`  Overall Score: ${(report.overallScore * 100).toFixed(1)}%`);
+	for (const [cat, score] of Object.entries(report.categoryScores)) {
+		console.log(`  - ${cat}: ${(score * 100).toFixed(1)}%`);
+	}
+
+	if (values.output) {
+		await writeFile(values.output, JSON.stringify(report, null, 2));
+		console.log(`Diagnostic report saved to ${values.output}`);
 	}
 }
 
@@ -265,7 +346,7 @@ async function reportCommand() {
 		process.exit(1);
 	}
 
-	const raw = await Bun.file(values.input!).text();
+	const raw = await readFile(values.input!, "utf-8");
 	const tournament = JSON.parse(raw);
 	const report = generateReport(tournament);
 
@@ -282,7 +363,7 @@ async function reportCommand() {
 	}
 
 	if (values.output) {
-		await Bun.write(values.output, output);
+		await writeFile(values.output, output);
 		console.log(`Report written to ${values.output}`);
 	} else {
 		console.log(output);
@@ -300,6 +381,10 @@ switch (command) {
 		process.argv.splice(2, 1);
 		tournamentCommand().catch(console.error);
 		break;
+	case "eval":
+		process.argv.splice(2, 1);
+		evalCommand().catch(console.error);
+		break;
 	case "report":
 		process.argv.splice(2, 1);
 		reportCommand().catch(console.error);
@@ -313,6 +398,7 @@ switch (command) {
 		console.log("Commands:");
 		console.log("  run           Run a single matchup");
 		console.log("  tournament    Run a round-robin tournament");
+		console.log("  eval          Run diagnostic scenarios on a model");
 		console.log("  report        Generate report from saved results");
 		console.log("  leaderboard   Alias for report --format markdown\n");
 		console.log("Run options:");
@@ -327,13 +413,15 @@ switch (command) {
 		console.log("Tournament options:");
 		console.log("  --config <file>      Load config from JSON file");
 		console.log("  --models <a,b,c>     Comma-separated agent names");
+		console.log("  --parallel <n>       Concurrency level (default: 1)");
 		console.log("  --checkpoint         Enable checkpoint/resume");
 		console.log("  --results-dir <dir>  Results directory (default: results)\n");
+		console.log("Eval options:");
+		console.log("  --model <agent>      Model to evaluate");
+		console.log("  --scenarios <file>   JSON file with scenarios (default: example)");
+		console.log("  --output <file>      Save diagnostic report\n");
 		console.log("Examples:");
 		console.log("  bun run packages/cli/src/index.ts run --a random --b heuristic --games 100");
-		console.log("  bun run packages/cli/src/index.ts tournament --config tournament.example.json");
-		console.log(
-			"  bun run packages/cli/src/index.ts tournament --models random,heuristic --games 50",
-		);
-		console.log("  bun run packages/cli/src/index.ts report --input results/tournament-*.json");
+		console.log("  bun run packages/cli/src/index.ts eval --model gpt-4o");
+		console.log("  bun run packages/cli/src/index.ts tournament --models random,heuristic --parallel 4");
 }

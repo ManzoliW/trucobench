@@ -12,28 +12,45 @@ export class OpenAICompatProvider implements LLMProvider {
 	private baseURL: string;
 	private apiKey: string;
 
-	constructor(name: string, model: string, baseURL: string, apiKey: string) {
+	private timeoutMs: number;
+
+	constructor(name: string, model: string, baseURL: string, apiKey: string, timeoutMs = 25_000) {
 		this.name = name;
 		this.model = model;
 		this.baseURL = baseURL.replace(/\/+$/, ""); // strip trailing slash
 		this.apiKey = apiKey;
+		this.timeoutMs = timeoutMs;
 	}
 
 	async chat(messages: ChatMessage[], temperature: number): Promise<LLMResponse> {
 		const start = performance.now();
 
-		const res = await fetch(`${this.baseURL}/chat/completions`, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-				Authorization: `Bearer ${this.apiKey}`,
-			},
-			body: JSON.stringify({
-				model: this.model,
-				messages: messages.map((m) => ({ role: m.role, content: m.content })),
-				temperature,
-			}),
-		});
+		const ctrl = new AbortController();
+		const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
+		let res: Response;
+		try {
+			res = await fetch(`${this.baseURL}/chat/completions`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${this.apiKey}`,
+				},
+				body: JSON.stringify({
+					model: this.model,
+					messages: messages.map((m) => ({ role: m.role, content: m.content })),
+					temperature,
+				}),
+				signal: ctrl.signal,
+				cache: "no-store",
+			});
+		} catch (err) {
+			if ((err as Error).name === "AbortError") {
+				throw new Error(`${this.name} timeout after ${this.timeoutMs}ms`);
+			}
+			throw err;
+		} finally {
+			clearTimeout(timer);
+		}
 
 		if (!res.ok) {
 			const body = await res.text().catch(() => "");

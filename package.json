@@ -6,7 +6,9 @@
 	"scripts": {
 		"test": "bun test",
 		"check": "biome check .",
-		"check:fix": "biome check --write ."
+		"check:fix": "biome check --write .",
+		"cli": "bun run packages/cli/src/index.ts",
+		"paper:assets": "bun run scripts/generate-paper-data.ts"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.0",

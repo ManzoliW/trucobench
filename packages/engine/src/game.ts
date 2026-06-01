@@ -18,6 +18,7 @@ import {
 	type RoundState,
 	type StepResult,
 	type TrickResult,
+	type TrucoTiming,
 } from "./types.ts";
 
 const WIN_SCORE = 12;
@@ -27,9 +28,11 @@ export class Game {
 	state: GameState;
 	private seedBase: number | undefined;
 	private roundSeedCounter = 0;
+	private trucoTiming: TrucoTiming;
 
-	constructor(seed?: number) {
-		this.seedBase = seed;
+	constructor(options?: { seed?: number; trucoTiming?: TrucoTiming }) {
+		this.seedBase = options?.seed;
+		this.trucoTiming = options?.trucoTiming ?? "after-first-trick";
 		this.state = {
 			scores: [0, 0],
 			currentRound: null,
@@ -138,13 +141,18 @@ export class Game {
 			return [];
 		}
 
-		// Normal play: it must be this player's turn to play a card
-		const isFirstCardPhase = round.currentTrick.firstCard === null;
-		const isMyTurn = isFirstCardPhase
-			? round.currentTrick.firstPlayer === playerId
-			: round.currentTrick.firstPlayer !== playerId;
-
-		if (!isMyTurn) return [];
+		// Turn restoration: if an escalation was just resolved and the initiator hasn't played yet
+		if (round.escalation.initiatedBySeat !== null && round.escalation.pendingRequest === null) {
+			if (round.escalation.initiatedBySeat !== playerId) return [];
+			// The initiator gets to play their card
+		} else {
+			// Normal play: it must be this player's turn to play a card
+			const isFirstCardPhase = round.currentTrick.firstCard === null;
+			const isMyTurn = isFirstCardPhase
+				? round.currentTrick.firstPlayer === playerId
+				: round.currentTrick.firstPlayer !== playerId;
+			if (!isMyTurn) return [];
+		}
 
 		// Card play actions
 		const actions: Action[] = round.hands[playerId].map(
@@ -154,8 +162,16 @@ export class Game {
 			}),
 		);
 
+		// TRUCO timing guard
+		let escalationAllowed = true;
+		if (this.trucoTiming === "after-first-trick") {
+			escalationAllowed = round.tricks.length > 0;
+		} else if (this.trucoTiming === "after-first-card") {
+			escalationAllowed = round.currentTrick.firstCard !== null || round.tricks.length > 0;
+		}
+
 		// Can escalate? (not in mão de ferro — stakes are fixed at 3)
-		if (!round.maoDeferro && canEscalate(round.escalation, playerId)) {
+		if (escalationAllowed && !round.maoDeferro && canEscalate(round.escalation, playerId)) {
 			actions.push({ type: ActionType.TRUCO });
 		}
 
@@ -242,6 +258,11 @@ export class Game {
 
 		// Remove card from hand
 		round.hands[playerId] = hand.filter((_, i) => i !== action.cardIndex);
+
+		// Clear turn restoration after the initiator plays
+		if (round.escalation.initiatedBySeat === playerId) {
+			round.escalation.initiatedBySeat = null;
+		}
 
 		if (round.currentTrick.firstCard === null) {
 			// First card of the trick

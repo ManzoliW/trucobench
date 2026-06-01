@@ -1,9 +1,13 @@
 "use client";
 
 import { CHAT_PHRASES } from "@/lib/chat-phrases";
+import { getCommentary } from "@/lib/commentary";
 import type { GameConfig, GameSnapshot } from "@/lib/game-manager";
+import { type GameResult, encodeResultForShare, saveGameResult } from "@/lib/game-history";
+import { type GameStats, computeStats, formatDuration } from "@/lib/game-stats";
 import { type Locale, t } from "@/lib/i18n";
 import * as Sfx from "@/lib/sounds";
+import { RansomLabel, RansomTitle } from "./RansomTitle";
 import type {
 	Action,
 	Card as CardType,
@@ -25,6 +29,8 @@ interface Props {
 	gameId: string;
 	config: GameConfig;
 	onNewGame: () => void;
+	onRematch?: () => void;
+	p2pRoom?: import("@/lib/p2p").P2PRoom | null;
 	locale: Locale;
 }
 
@@ -36,6 +42,14 @@ const SEAT_ANIM: Record<number, string> = {
 };
 const SEAT_COLORS = ["var(--seat-0)", "var(--seat-1)", "var(--seat-2)", "var(--seat-3)"];
 const SEAT_POS = ["S", "W", "N", "E"];
+/** Durations matching CSS animation keyframes + small buffer */
+const SIGNAL_TOAST_MS = 3600; // CSS: signal-toast 3500ms
+const CHAT_BUBBLE_MS = 4600; // CSS: chat-bubble 4500ms
+
+const FELT_GRAIN_STYLE: React.CSSProperties = {
+	backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E")`,
+	backgroundSize: "180px 180px",
+};
 
 /** Build locale-aware display names for each seat */
 function getLocalizedSeatNames(config: GameConfig, locale: Locale): string[] {
@@ -51,7 +65,7 @@ function getLocalizedSeatNames(config: GameConfig, locale: Locale): string[] {
 	return raw.map((n, i) => (counts.get(n)! > 1 ? `${n} (${SEAT_POS[i]})` : n));
 }
 
-export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
+export function GameBoard({ gameId, config, onNewGame, onRematch, locale, p2pRoom }: Props) {
 	const [snap, setSnap] = useState<GameSnapshot | null>(null);
 	const [log, setLog] = useState<LogEntry[]>([]);
 	const [waitHuman, setWaitHuman] = useState(false);
@@ -59,11 +73,17 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 	const [error, setError] = useState<string | null>(null);
 	const [roundPaused, setRoundPaused] = useState(false);
 	const [scoreAnim, setScoreAnim] = useState(false);
+	const [scoreFloat, setScoreFloat] = useState<{ team: number; pts: number } | null>(null);
+	const prevScoresRef = useRef<[number, number]>([0, 0]);
 	const [shaking, setShaking] = useState(false);
 	const shakeTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-	const [speed, setSpeed] = useState(1);
+	const [speed, setSpeed] = useState(() => config.players.every((p) => p.type !== "human") ? 1.5 : 1);
 	const [foldConfirm, setFoldConfirm] = useState(false);
-	const [showLog, setShowLog] = useState(() => config.players.every((p) => p.type !== "human"));
+	const [showLog, setShowLog] = useState(() => {
+		// Default: open on desktop for spectator games, closed on mobile
+		if (typeof window !== "undefined" && window.innerWidth < 768) return false;
+		return config.players.every((p) => p.type !== "human");
+	});
 	const [submitting, setSubmitting] = useState(false);
 	const [disconnected, setDisconnected] = useState(false);
 	const [signalToasts, setSignalToasts] = useState<
@@ -72,17 +92,113 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 	const [showSignalPanel, setShowSignalPanel] = useState(false);
 	const [countdown, setCountdown] = useState<number | null>(null);
 	const countdownRef = useRef<ReturnType<typeof setInterval>>(undefined);
+	const [timedOut, setTimedOut] = useState(false);
+	const timedOutTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 	const [chatBubbles, setChatBubbles] = useState<
 		{ id: number; seat: number; name: string; text: string }[]
 	>([]);
 	const [showPhrases, setShowPhrases] = useState(false);
 	const signalIdRef = useRef(0);
 	const logRef = useRef<HTMLDivElement>(null);
+	const startTimeRef = useRef(Date.now());
 	const scoreTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 	const seatNames = useMemo(() => getLocalizedSeatNames(config, locale), [config, locale]);
 
+	// P2P event subscription (when in P2P mode)
+	useEffect(() => {
+		if (!p2pRoom) return;
+		return p2pRoom.onEvent((event) => {
+			const msg = event;
+			if (msg.type === "state") {
+				setSnap(msg.data as GameSnapshot);
+				Sfx.playShuffle();
+			}
+			if (msg.type === "action") {
+				const entry = msg.data as LogEntry;
+				setLog((p) => [...p, entry]);
+				setFoldConfirm(false);
+				setSubmitting(false);
+				if (entry.action.type === ActionType.PLAY_CARD) Sfx.playCardPlace();
+				else if (entry.action.type === ActionType.TRUCO) {
+					Sfx.playTruco();
+					setShaking(true);
+					clearTimeout(shakeTimerRef.current);
+					shakeTimerRef.current = setTimeout(() => setShaking(false), 450);
+				} else if (entry.action.type === ActionType.RAISE) {
+					Sfx.playRaise();
+					setShaking(true);
+					clearTimeout(shakeTimerRef.current);
+					shakeTimerRef.current = setTimeout(() => setShaking(false), 450);
+				} else if (entry.action.type === ActionType.ACCEPT) Sfx.playAccept();
+				else if (entry.action.type === ActionType.FOLD) Sfx.playFold();
+			}
+			if (msg.type === "waiting_human") {
+				setWaitHuman(true);
+				setSubmitting(false);
+				setTimedOut(false);
+				clearTimeout(timedOutTimerRef.current);
+				const hData = msg.data as { seat: number; timeoutMs?: number };
+				if (hData.timeoutMs && hData.timeoutMs > 0) {
+					const BUFFER_MS = 2000;
+					const displayMs = hData.timeoutMs - BUFFER_MS;
+					setCountdown(Math.max(1, Math.ceil(displayMs / 1000)));
+					timedOutTimerRef.current = setTimeout(() => {
+						setTimedOut(true);
+					}, Math.max(1000, displayMs));
+				} else {
+					setCountdown(null);
+				}
+			}
+			if (msg.type === "timeout") {
+				clearTimeout(timedOutTimerRef.current);
+				setCountdown(null);
+				setTimedOut(false);
+				setWaitHuman(false);
+			}
+			if (msg.type === "round_end") {
+				const d = msg.data as { scores: [number, number] };
+				const prev = prevScoresRef.current;
+				const diff0 = d.scores[0] - prev[0];
+				const diff1 = d.scores[1] - prev[1];
+				if (diff0 > 0) setScoreFloat({ team: 0, pts: diff0 });
+				else if (diff1 > 0) setScoreFloat({ team: 1, pts: diff1 });
+				prevScoresRef.current = [...d.scores];
+				setTimeout(() => setScoreFloat(null), 1200);
+				setSnap((p) => (p ? { ...p, scores: d.scores } : p));
+				setScoreAnim(true);
+				Sfx.playRoundWin();
+				clearTimeout(scoreTimerRef.current);
+				scoreTimerRef.current = setTimeout(() => setScoreAnim(false), 500);
+			}
+			if (msg.type === "round_pause") setRoundPaused(true);
+			if (msg.type === "game_end") {
+				const d = msg.data as { winner: number; scores: [number, number] };
+				setSnap((p) => (p ? { ...p, winner: d.winner, scores: d.scores } : p));
+				setOver(true);
+				const humanIdx = config.players.findIndex((p) => p.type === "human");
+				if (humanIdx >= 0) {
+					const humanTeam = humanIdx % 2;
+					if (d.winner === humanTeam) Sfx.playGameWin();
+					else Sfx.playGameLoss();
+				} else {
+					Sfx.playGameWin();
+				}
+			}
+			if (msg.type === "error") setError((msg.data as { error: string }).error);
+			if (msg.type === "chat") {
+				const chatMsg = msg.data as { seat: number; name: string; text: string };
+				setChatBubbles((prev) => [
+					...prev.slice(-4),
+					{ id: Date.now() + Math.random(), ...chatMsg },
+				]);
+				Sfx.playChatPing();
+			}
+		});
+	}, [p2pRoom]);
+
 	// SSE connection with reconnection
 	useEffect(() => {
+		if (p2pRoom) return; // Skip SSE when using P2P
 		let es: EventSource | null = null;
 		let retryCount = 0;
 		let closed = false;
@@ -129,19 +245,36 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 				if (msg.type === "waiting_human") {
 					setWaitHuman(true);
 					setSubmitting(false);
+					setTimedOut(false);
+					clearTimeout(timedOutTimerRef.current);
 					const hData = msg.data as { seat: number; timeoutMs?: number };
 					if (hData.timeoutMs && hData.timeoutMs > 0) {
-						setCountdown(Math.ceil(hData.timeoutMs / 1000));
+						const BUFFER_MS = 2000;
+						const displayMs = hData.timeoutMs - BUFFER_MS;
+						setCountdown(Math.max(1, Math.ceil(displayMs / 1000)));
+						timedOutTimerRef.current = setTimeout(() => {
+							setTimedOut(true);
+						}, Math.max(1000, displayMs));
 					} else {
 						setCountdown(null);
 					}
 				}
 				if (msg.type === "timeout") {
+					clearTimeout(timedOutTimerRef.current);
 					setCountdown(null);
+					setTimedOut(false);
 					setWaitHuman(false);
 				}
 				if (msg.type === "round_end") {
 					const d = msg.data as { scores: [number, number] };
+					// Floating score diff
+					const prev = prevScoresRef.current;
+					const diff0 = d.scores[0] - prev[0];
+					const diff1 = d.scores[1] - prev[1];
+					if (diff0 > 0) setScoreFloat({ team: 0, pts: diff0 });
+					else if (diff1 > 0) setScoreFloat({ team: 1, pts: diff1 });
+					prevScoresRef.current = [...d.scores];
+					setTimeout(() => setScoreFloat(null), 1200);
 					setSnap((p) => (p ? { ...p, scores: d.scores } : p));
 					setScoreAnim(true);
 					Sfx.playRoundWin();
@@ -225,6 +358,7 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 			closed = true;
 			es?.close();
 			clearTimeout(scoreTimerRef.current);
+			clearTimeout(timedOutTimerRef.current);
 		};
 	}, [gameId]);
 
@@ -237,7 +371,7 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 		if (signalToasts.length === 0) return;
 		const timer = setTimeout(() => {
 			setSignalToasts((prev) => prev.slice(1));
-		}, 3600);
+		}, SIGNAL_TOAST_MS);
 		return () => clearTimeout(timer);
 	}, [signalToasts]);
 
@@ -262,7 +396,7 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 		if (chatBubbles.length === 0) return;
 		const timer = setTimeout(() => {
 			setChatBubbles((prev) => prev.slice(1));
-		}, 4700);
+		}, CHAT_BUBBLE_MS);
 		return () => clearTimeout(timer);
 	}, [chatBubbles]);
 
@@ -273,6 +407,10 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 
 	const doSendSignal = useCallback(
 		async (signalType: string) => {
+			if (p2pRoom) {
+				if (p2pRoom.role === "guest") p2pRoom.sendSignal(signalType);
+				return;
+			}
 			const seat = config.players.findIndex((p) => p.type === "human");
 			if (seat < 0) return;
 			try {
@@ -285,11 +423,16 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 				/* non-critical */
 			}
 		},
-		[gameId, config],
+		[gameId, config, p2pRoom],
 	);
 
 	const doSendChat = useCallback(
 		async (text: string) => {
+			if (p2pRoom) {
+				if (p2pRoom.role === "guest") p2pRoom.sendChat(text);
+				setShowPhrases(false);
+				return;
+			}
 			const seat = config.players.findIndex((p) => p.type === "human");
 			if (seat < 0) return;
 			setShowPhrases(false);
@@ -303,16 +446,25 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 				/* non-critical */
 			}
 		},
-		[gameId, config],
+		[gameId, config, p2pRoom],
 	);
 
 	const submit = useCallback(
 		async (action: Action) => {
-			if (submitting) return;
+			if (submitting || timedOut) return;
 			setSubmitting(true);
 			setWaitHuman(false);
 			setFoldConfirm(false);
 			setCountdown(null);
+			clearTimeout(timedOutTimerRef.current);
+			if (p2pRoom) {
+				if (p2pRoom.role === "host") {
+					p2pRoom.submitLocalAction(action);
+				} else {
+					p2pRoom.sendAction(action);
+				}
+				return;
+			}
 			try {
 				const res = await fetch(`/api/game/${gameId}/action`, {
 					method: "POST",
@@ -320,22 +472,21 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 					body: JSON.stringify(action),
 				});
 				if (!res.ok) {
-					// Backend wasn't ready — restore turn state so user can retry
 					setWaitHuman(true);
 					setSubmitting(false);
 				}
 			} catch {
-				// Network error — restore turn state so user can retry
 				setWaitHuman(true);
 				setSubmitting(false);
 			}
 		},
-		[gameId, submitting],
+		[gameId, submitting, p2pRoom],
 	);
 
 	const changeSpeed = useCallback(
 		async (s: number) => {
 			setSpeed(s);
+			if (p2pRoom) return; // P2P uses fixed timing
 			try {
 				await fetch(`/api/game/${gameId}/speed`, {
 					method: "POST",
@@ -346,17 +497,18 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 				/* non-critical */
 			}
 		},
-		[gameId],
+		[gameId, p2pRoom],
 	);
 
 	const continueRound = useCallback(async () => {
 		setRoundPaused(false);
+		if (p2pRoom) return;
 		try {
 			await fetch(`/api/game/${gameId}/continue`, { method: "POST" });
 		} catch {
 			setRoundPaused(true);
 		}
-	}, [gameId]);
+	}, [gameId, p2pRoom]);
 
 	if (!snap)
 		return (
@@ -375,11 +527,136 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 	const myObs = snap.observations?.length
 		? ((humanSeat >= 0 ? snap.observations[humanSeat] : snap.observations[0]) ?? null)
 		: null;
-	const isMyTurn = waitHuman && snap.currentSeat !== null && !submitting;
+	const isMyTurn = waitHuman && snap.currentSeat !== null && !submitting && !timedOut;
 	const spectating = humanSeat < 0;
 
+	function handAndActionsContent() {
+		return (
+			<>
+				{/* Cards row */}
+				<div className="flex justify-center gap-2 sm:gap-3 mb-2">
+					{myObs &&
+						"hand" in myObs &&
+						myObs.hand.map((card, i) => (
+							<div key={`${card.rank}-${card.suit}-${i}`} className={`anim-deal deal-${i}`}>
+								<Card
+									card={card}
+									isManilha={checkManilha(card, myObs.vira)}
+									flipIn
+									testId={`hand-card-${i}`}
+									onClick={
+										isMyTurn &&
+										myObs.legalActions.some(
+											(a) => a.type === "PLAY_CARD" && "cardIndex" in a && a.cardIndex === i,
+										)
+											? () => submit({ type: "PLAY_CARD", cardIndex: i })
+											: undefined
+									}
+									disabled={!isMyTurn || submitting}
+								/>
+							</div>
+						))}
+					{timedOut && waitHuman ? (
+						<span
+							className="text-sm font-bold self-center min-w-[32px] text-center text-[var(--red)] animate-pulse"
+							role="alert"
+							aria-live="assertive"
+						>
+							{t(locale, "game.timeout")}
+						</span>
+					) : countdown !== null && countdown > 0 && isMyTurn ? (
+						<span
+							className={`text-sm font-bold tabular-nums self-center min-w-[32px] text-center ${
+								countdown <= 10
+									? "text-[var(--red)]"
+									: countdown <= 20
+										? "text-[var(--gold)]"
+										: "text-[var(--text-muted)]"
+							}`}
+							role="timer"
+							aria-live="assertive"
+							aria-label={`${countdown} seconds remaining`}
+						>
+							{countdown}s
+						</span>
+					) : null}
+				</div>
+				{/* Action buttons */}
+				<div className="flex items-center justify-center gap-2 flex-wrap">
+					{isMyTurn && myObs && "legalActions" in myObs ? (
+						myObs.legalActions
+							.filter((a) => a.type !== "PLAY_CARD")
+							.map((a) => {
+								if (a.type === ActionType.FOLD) {
+									return foldConfirm ? (
+										<button type="button" key="fold-c" data-testid="action-FOLD-confirm" onClick={() => submit(a)} disabled={submitting} className="px-3 sm:px-4 py-2 rounded text-sm font-semibold bg-[var(--red)] text-white min-h-[44px] disabled:opacity-50 hover:opacity-90 transition-opacity">
+											{t(locale, "game.foldConfirm")}
+										</button>
+									) : (
+										<button type="button" key="fold" data-testid="action-FOLD" onClick={() => setFoldConfirm(true)} disabled={submitting} className="px-2.5 sm:px-3 py-2 rounded text-xs text-[var(--text-dim)] border border-[var(--border)] min-h-[44px] disabled:opacity-50 hover:text-[var(--text-muted)] hover:border-[var(--border-light)] transition-colors">
+											{t(locale, "game.fold")}
+										</button>
+									);
+								}
+								return (
+									<button
+										type="button"
+										key={a.type}
+										data-testid={`action-${a.type}`}
+										onClick={() => submit(a)}
+										disabled={submitting}
+										title={actionTooltip(a.type, locale)}
+										className={`px-4 sm:px-5 py-2.5 rounded-lg text-sm font-bold transition-all hover:scale-110 min-h-[48px] disabled:opacity-50 shadow-md ${btnStyle(a.type)} ${a.type === "TRUCO" || a.type === "RAISE" ? "truco-btn" : ""}`}
+										style={{ transform: `rotate(${a.type === "TRUCO" ? -1 : a.type === "RAISE" ? 1 : 0}deg)` }}
+									>
+										{a.type === "TRUCO" || a.type === "RAISE" ? (
+											<RansomLabel text={a.type} className="text-base" />
+										) : (
+											a.type
+										)}
+									</button>
+								);
+							})
+					) : humanSeat >= 0 && !over && snap?.currentSeat !== null && snap?.currentSeat !== undefined && snap.currentSeat !== humanSeat ? (
+						<ThinkingIndicator who={seatNames[snap.currentSeat] ?? "AI"} locale={locale} />
+					) : null}
+				</div>
+				{/* Signal panel */}
+				{is4p && humanSeat >= 0 && !over && (
+					<SignalPanel
+						onSend={doSendSignal}
+						hand={myObs && "hand" in myObs ? myObs.hand : []}
+						vira={myObs && "vira" in myObs ? myObs.vira : null}
+						locale={locale}
+					/>
+				)}
+				{/* Chat phrases */}
+				{humanSeat >= 0 && !over && (
+					<ChatPhraseBar
+						showPhrases={showPhrases}
+						onToggle={() => setShowPhrases((p) => !p)}
+						onSend={doSendChat}
+						locale={locale}
+					/>
+				)}
+			</>
+		);
+	}
+
 	return (
-		<div className={`flex flex-col md:grid md:grid-cols-12 gap-2 md:gap-3 h-full ${shaking ? "anim-shake" : ""}`} data-ui>
+		<div
+			className={`flex flex-col md:grid md:grid-cols-12 gap-2 md:gap-3 h-full ${shaking ? "anim-shake" : ""}`}
+			data-ui
+			data-testid="game-board"
+			data-current-seat={snap.currentSeat ?? "none"}
+			data-human-seat={humanSeat}
+			data-my-turn={isMyTurn ? "true" : "false"}
+			data-waiting-human={waitHuman ? "true" : "false"}
+			data-over={over ? "true" : "false"}
+			data-score-a={snap.scores[0]}
+			data-score-b={snap.scores[1]}
+			data-round={snap.roundNumber}
+		>
 			<main className="md:col-span-8 flex flex-col gap-2 lg:gap-3 min-h-0 flex-1">
 				{/* Disconnected banner */}
 				{disconnected && (
@@ -393,7 +670,7 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 
 				{/* Score bar */}
 				<div
-					className="flex items-center justify-between bg-[var(--surface)] rounded-lg px-3 sm:px-5 py-2 border border-[var(--border)]"
+					className="flex items-center justify-between bg-[var(--surface)] border border-[var(--border)] rounded-lg px-3 sm:px-5 py-2"
 					role="status"
 					aria-live="polite"
 				>
@@ -408,17 +685,38 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 						humanSeat={humanSeat}
 						locale={locale}
 					/>
-					<div className="text-center min-w-0">
+					<div className="text-center min-w-0 relative">
 						<div
-							className={`text-xl sm:text-2xl font-bold tabular-nums font-display ${scoreAnim ? "anim-score" : ""}`}
+							className={`text-2xl sm:text-3xl font-bold tabular-nums font-display ${scoreAnim ? "anim-score" : ""}`}
 							aria-label={t(locale, "score.label", { a: snap.scores[0], b: snap.scores[1] })}
 						>
 							{snap.scores[0]} <span className="text-[var(--text-dim)]">&ndash;</span>{" "}
 							{snap.scores[1]}
 						</div>
+						{/* Score progress bars */}
+						<div className="flex items-center gap-1.5 justify-center mt-1">
+							<div className="flex gap-px">
+								{Array.from({ length: 12 }).map((_, i) => (
+									<div key={`a${i}`} className={`w-1.5 h-1 rounded-sm transition-colors duration-300 ${i < snap.scores[0] ? "bg-[var(--team-a)]" : "bg-[var(--border)]/30"}`} />
+								))}
+							</div>
+							<span className="text-[7px] text-[var(--text-dim)]">vs</span>
+							<div className="flex gap-px">
+								{Array.from({ length: 12 }).map((_, i) => (
+									<div key={`b${i}`} className={`w-1.5 h-1 rounded-sm transition-colors duration-300 ${i < snap.scores[1] ? "bg-[var(--team-b)]" : "bg-[var(--border)]/30"}`} />
+								))}
+							</div>
+						</div>
 						<span className="text-[9px] sm:text-[10px] text-[var(--text-dim)]">
 							{t(locale, "game.round", { n: snap.roundNumber })}
 						</span>
+						{/* Floating score diff */}
+						{scoreFloat && (
+							<span className={`absolute -top-2 ${scoreFloat.team === 0 ? "left-0" : "right-0"} text-sm font-bold anim-score-float`}
+								style={{ color: scoreFloat.team === 0 ? "var(--team-a)" : "var(--team-b)" }}>
+								+{scoreFloat.pts}
+							</span>
+						)}
 					</div>
 					<TeamLabel
 						seatNames={seatNames}
@@ -433,12 +731,29 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 					/>
 				</div>
 
+				{/* Your turn banner */}
+				{isMyTurn && !over && (
+					<div className="anim-turn-banner bg-[var(--green)]/15 border border-[var(--green)]/30 rounded-lg px-3 py-1.5 text-center">
+						<span className="text-sm font-bold text-[var(--green-light)]">
+							{t(locale, "game.yourTurn")}
+						</span>
+					</div>
+				)}
+
 				{/* Table */}
 				<div
-					className="flex-1 min-h-[200px] sm:min-h-[280px] bg-[var(--table)] rounded-lg border border-[var(--table-border)] relative flex items-center justify-center overflow-hidden"
+					className={`flex-1 min-h-[200px] sm:min-h-[280px] bg-[var(--table)] rounded-lg border-2 relative flex items-center justify-center overflow-hidden transition-colors duration-300 ${
+						isMyTurn ? "border-[var(--green-light)] anim-your-turn" : "border-[var(--table-border)]"
+					}`}
 					role="region"
 					aria-label="Game table"
 				>
+					{/* Felt grain texture */}
+					<div
+						className="absolute inset-0 opacity-[0.08] pointer-events-none mix-blend-overlay"
+						style={FELT_GRAIN_STYLE}
+						aria-hidden="true"
+					/>
 					{/* Signal toasts */}
 					{signalToasts.length > 0 && (
 						<div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex flex-col gap-1 items-center pointer-events-none" role="log" aria-live="polite" aria-label="Game signals">
@@ -497,7 +812,7 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 
 					{myObs && "vira" in myObs && (
 						<div className="absolute top-2 left-2 sm:top-3 sm:left-3 flex flex-col items-center gap-0.5 anim-deal">
-							<span className="text-[8px] sm:text-[9px] text-[var(--text-muted)]">
+							<span className="text-[9px] sm:text-[10px] font-bold text-white/70 uppercase tracking-wider">
 								{t(locale, "game.vira")}
 							</span>
 							<Card card={myObs.vira} small />
@@ -551,8 +866,11 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 					)}
 
 					{myObs && "escalation" in myObs && myObs.escalation.level !== "NORMAL" && (
-						<div className="absolute top-2 right-2 sm:top-3 sm:right-3 bg-[var(--surface)]/80 border border-[var(--border)] rounded px-2 py-0.5 anim-escalation-badge">
-							<span className="text-[var(--gold)] text-[10px] sm:text-xs font-bold">
+						<div
+							className="absolute top-2 right-2 sm:top-3 sm:right-3 bg-[var(--surface)]/90 border border-[var(--gold)]/40 rounded px-2 py-0.5 anim-escalation-badge"
+							style={{ transform: "rotate(-2deg)" }}
+						>
+							<span className="text-[var(--gold)] text-[10px] sm:text-xs font-bold" style={{ fontFamily: "var(--font-ransom-typewriter), 'Special Elite', monospace" }}>
 								{myObs.escalation.level}
 							</span>
 						</div>
@@ -560,12 +878,19 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 
 					{myObs && "escalation" in myObs && myObs.escalation.pendingRequest && (
 						<div
-							className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[var(--accent)]/25 border-2 border-[var(--accent)]/50 rounded-xl px-4 sm:px-6 py-2 sm:py-3 z-[5] anim-callout"
+							className="absolute top-1/2 left-1/2 z-[5] anim-escalation-dramatic"
+							style={{ transform: "translate(-50%, -50%)" }}
 							role="alert"
 						>
-							<span className="text-[var(--accent-light)] font-bold text-lg sm:text-xl">
-								{myObs.escalation.pendingRequest}!
-							</span>
+							<div className="bg-[var(--surface)]/95 border-3 border-[var(--accent)] rounded-xl px-6 sm:px-10 py-4 sm:py-6 shadow-2xl text-center">
+								<RansomTitle text={`${myObs.escalation.pendingRequest}!`} className="text-2xl sm:text-4xl" />
+								<div className="mt-2 text-xs text-[var(--text-dim)]">
+									{myObs.escalation.pendingRequest === "TRUCO" ? "1 → 3 pts" :
+									 myObs.escalation.pendingRequest === "SEIS" ? "3 → 6 pts" :
+									 myObs.escalation.pendingRequest === "NOVE" ? "6 → 9 pts" :
+									 myObs.escalation.pendingRequest === "DOZE" ? "9 → 12 pts" : ""}
+								</div>
+							</div>
 						</div>
 					)}
 
@@ -582,7 +907,7 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 
 					{roundPaused && (
 						<Overlay>
-							<div className="bg-[var(--surface)] border border-[var(--border)] rounded-lg px-6 sm:px-8 py-4 sm:py-5 text-center anim-fade mx-4">
+							<div className="torn-paper tape px-6 sm:px-8 py-4 sm:py-5 text-center anim-fade mx-4" style={{ "--tape-r": "1deg", transform: "rotate(-0.5deg)" } as React.CSSProperties}>
 								<p className="text-sm text-[var(--text-muted)] mb-1">
 									{t(locale, "game.roundComplete")}
 								</p>
@@ -592,7 +917,7 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 								<button
 									type="button"
 									onClick={continueRound}
-									className="px-5 sm:px-6 py-2 bg-[var(--accent)] text-white rounded font-semibold text-sm min-h-[44px] hover:bg-[var(--accent-light)] active:scale-[0.98] transition-colors"
+									className="torn-paper !bg-[var(--accent)] text-white px-5 sm:px-6 py-2 font-semibold text-sm min-h-[44px] hover:scale-105 transition-transform"
 								>
 									{t(locale, "game.nextRound")}
 								</button>
@@ -616,136 +941,77 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 								snap={snap}
 								humanSeat={humanSeat}
 								seatNames={seatNames}
+								log={log}
+								startTime={startTimeRef.current}
+								config={config}
+								gameId={gameId}
 								onNewGame={onNewGame}
+								onRematch={onRematch}
 								locale={locale}
 							/>
 						</Overlay>
 					)}
 				</div>
 
-				{/* Hand + actions */}
-				<section
-					className="bg-[var(--surface)] rounded-lg border border-[var(--border)] px-3 sm:px-4 py-2 sm:py-3"
-					aria-label={t(locale, "game.yourHand")}
-				>
-					<div className="flex items-center justify-between gap-2 sm:gap-4 flex-wrap">
-						<div className="flex gap-1.5 sm:gap-2 min-w-0">
-							{myObs &&
-								"hand" in myObs &&
-								myObs.hand.map((card, i) => (
-									<div key={`${card.rank}-${card.suit}`} className={`anim-deal deal-${i}`}>
-										<Card
-											card={card}
-											isManilha={checkManilha(card, myObs.vira)}
-											flipIn
-											onClick={
-												isMyTurn &&
-												myObs.legalActions.some(
-													(a) => a.type === "PLAY_CARD" && "cardIndex" in a && a.cardIndex === i,
-												)
-													? () => submit({ type: "PLAY_CARD", cardIndex: i })
-													: undefined
-											}
-											disabled={!isMyTurn || submitting}
-										/>
-									</div>
-								))}
-						</div>
-						<div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-							{/* Turn countdown */}
-							{countdown !== null && countdown > 0 && isMyTurn && (
-								<span
-									className={`text-sm font-bold tabular-nums min-w-[32px] text-center ${
-										countdown <= 10
-											? "text-[var(--red)]"
-											: countdown <= 20
-												? "text-[var(--gold)]"
-												: "text-[var(--text-muted)]"
-									}`}
-									role="timer"
-									aria-live="assertive"
-									aria-label={`${countdown} seconds remaining`}
-								>
-									{countdown}s
-								</span>
-							)}
-							{isMyTurn && myObs && "legalActions" in myObs ? (
-								myObs.legalActions
-									.filter((a) => a.type !== "PLAY_CARD")
-									.map((a) => {
-										if (a.type === ActionType.FOLD) {
-											return foldConfirm ? (
-												<button
-													type="button"
-													key="fold-c"
-													onClick={() => submit(a)}
-													disabled={submitting}
-													className="px-3 sm:px-4 py-2 rounded text-sm font-semibold bg-[var(--red)] text-white min-h-[44px] disabled:opacity-50 hover:opacity-90 transition-opacity"
-												>
-													{t(locale, "game.foldConfirm")}
-												</button>
-											) : (
-												<button
-													type="button"
-													key="fold"
-													onClick={() => setFoldConfirm(true)}
-													disabled={submitting}
-													className="px-2.5 sm:px-3 py-2 rounded text-xs text-[var(--text-dim)] border border-[var(--border)] min-h-[44px] disabled:opacity-50 hover:text-[var(--text-muted)] hover:border-[var(--border-light)] transition-colors"
-												>
-													{t(locale, "game.fold")}
-												</button>
-											);
-										}
-										return (
-											<button
-												type="button"
-												key={a.type}
-												onClick={() => submit(a)}
-												disabled={submitting}
-												title={actionTooltip(a.type, locale)}
-												className={`px-3 sm:px-4 py-2 rounded text-sm font-semibold transition-transform min-h-[44px] disabled:opacity-50 ${btnStyle(a.type)}`}
-											>
-												{a.type}
-											</button>
-										);
-									})
-							) : spectating ? (
-								<SpeedControl speed={speed} onChange={changeSpeed} locale={locale} />
-							) : humanSeat >= 0 &&
-								!over &&
-								snap.currentSeat !== null &&
-								snap.currentSeat !== humanSeat ? (
-								<ThinkingIndicator who={seatNames[snap.currentSeat] ?? "AI"} locale={locale} />
-							) : null}
-						</div>
+				{/* Hand + actions — responsive single instance */}
+				{!spectating && (
+					<>
+						{/* Desktop: inline */}
+						<section
+							className="hidden md:block bg-[var(--surface)] rounded-lg border border-[var(--border)] px-4 py-3"
+							aria-label={t(locale, "game.yourHand")}
+						>
+							{handAndActionsContent()}
+						</section>
+						{/* Mobile: spacer + fixed bottom */}
+						<div className="h-[var(--hand-h,120px)] md:hidden shrink-0" />
+					</>
+				)}
+				{/* Speed controls for spectator on mobile */}
+				{spectating && (
+					<div className="md:hidden flex items-center justify-center gap-2 py-2">
+						<SpeedControl speed={speed} onChange={changeSpeed} locale={locale} />
 					</div>
-					{/* Signal panel — 4P mode with human player */}
-					{is4p && humanSeat >= 0 && !over && (
-						<SignalPanel
-							showPanel={showSignalPanel}
-							onToggle={() => setShowSignalPanel((p) => !p)}
-							onSend={doSendSignal}
-							hand={myObs && "hand" in myObs ? myObs.hand : []}
-							vira={myObs && "vira" in myObs ? myObs.vira : null}
-							locale={locale}
-						/>
-					)}
-					{/* Chat phrases — quick-select trash talk */}
-					{humanSeat >= 0 && !over && (
-						<ChatPhraseBar
-							showPhrases={showPhrases}
-							onToggle={() => setShowPhrases((p) => !p)}
-							onSend={doSendChat}
-							locale={locale}
-						/>
-					)}
-				</section>
+				)}
 			</main>
 
-			{/* Sidebar */}
+			{/* Fixed hand at bottom — mobile only */}
+			{!spectating && (
+				<section
+					className="md:hidden fixed bottom-0 left-0 right-0 z-20 bg-[var(--surface)]/95 backdrop-blur-sm border-t border-[var(--border)] px-3 py-2"
+					style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
+					aria-label={t(locale, "game.yourHand")}
+				>
+					{handAndActionsContent()}
+				</section>
+			)}
+
+			{/* Game log — collapsible on mobile, sidebar on desktop */}
+			{/* Collapsed: last action line */}
+			{!showLog && (
+				<button
+					type="button"
+					onClick={() => setShowLog(true)}
+					className="md:hidden fixed left-2 right-2 z-10 bg-[var(--surface)]/90 backdrop-blur-sm border border-[var(--border)] rounded-lg px-3 py-2 text-left flex items-center gap-2"
+					style={{ bottom: spectating ? "1rem" : "calc(var(--hand-h, 120px) + 10px)" }}
+					aria-label={`${t(locale, "game.log")} (${log.length})`}
+				>
+					<span className="text-[10px] text-[var(--text-dim)] shrink-0">{t(locale, "game.log")}</span>
+					<span className="text-xs text-[var(--text-muted)] truncate flex-1">
+						{log.length > 0
+							? getCommentary(seatNames[log[log.length - 1]!.seat] ?? "AI", log[log.length - 1]!.action, locale)
+							: t(locale, "game.waitingFirst")}
+					</span>
+					<span className="text-[10px] text-[var(--text-dim)] tabular-nums">{log.length}</span>
+				</button>
+			)}
+			{/* Expanded log */}
 			<aside
-				className={`md:col-span-4 bg-[var(--surface)] rounded-lg border border-[var(--border)] flex flex-col ${showLog ? "flex-1 min-h-[200px]" : "hidden"} md:min-h-0`}
+				className={`${showLog ? "fixed inset-x-2 top-auto z-30 max-h-[40vh] md:relative md:inset-auto md:max-h-none md:z-auto" : "hidden md:flex"} md:col-span-4 bg-[var(--surface)] rounded-lg border border-[var(--border)] flex flex-col md:min-h-0 md:flex-1 md:min-h-[200px] shadow-lg md:shadow-none`}
+				style={showLog && !spectating ? { bottom: "calc(var(--hand-h, 120px) + 10px)" } : showLog ? { bottom: "1rem" } : undefined}
 				aria-label={t(locale, "game.log")}
+				data-testid="game-log"
+				data-log-count={log.length}
 			>
 				<div className="px-3 sm:px-4 py-2 border-b border-[var(--border)] flex items-center justify-between">
 					<h3 className="text-sm font-semibold">{t(locale, "game.log")}</h3>
@@ -756,7 +1022,7 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 						<button
 							type="button"
 							onClick={() => setShowLog(false)}
-							className="text-[11px] text-[var(--text-dim)] min-h-[44px] px-2"
+							className="text-[11px] text-[var(--text-dim)] min-h-[44px] px-2 md:hidden"
 						>
 							{t(locale, "game.logClose")}
 						</button>
@@ -780,17 +1046,6 @@ export function GameBoard({ gameId, config, onNewGame, locale }: Props) {
 					<div ref={logRef} />
 				</div>
 			</aside>
-
-			{!showLog && (
-				<button
-					type="button"
-					onClick={() => setShowLog(true)}
-					className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] bg-[var(--surface)] border border-[var(--border)] rounded-full w-11 h-11 flex items-center justify-center text-xs text-[var(--text-muted)] shadow-lg z-20"
-					aria-label={`${t(locale, "game.log")} (${log.length})`}
-				>
-					{log.length}
-				</button>
-			)}
 		</div>
 	);
 }
@@ -835,24 +1090,23 @@ const TwoPTable = memo(function TwoPTable({
 					))}
 				</div>
 			</div>
-			{myObs?.currentTrick.firstCard && (
-				<div
-					className={`flex flex-col items-center gap-1 ${SEAT_ANIM[myObs.currentTrick.firstPlayer === (humanSeat >= 0 ? humanSeat : 0) ? 0 : 2] ?? "anim-fade"}`}
-				>
-					<Card card={myObs.currentTrick.firstCard} />
-					<span className="text-[8px] sm:text-[9px] text-[var(--text-dim)] truncate max-w-[100px]">
-						{
-							seatNames[
-								myObs.currentTrick.firstPlayer === (humanSeat >= 0 ? humanSeat : 0)
-									? humanSeat >= 0
-										? humanSeat
-										: 0
-									: oppSeat
-							]
-						}
-					</span>
-				</div>
-			)}
+			{myObs?.currentTrick.firstCard && (() => {
+				const isHumanCard = myObs.currentTrick.firstPlayer === (humanSeat >= 0 ? humanSeat : 0);
+				const seat = isHumanCard ? (humanSeat >= 0 ? humanSeat : 0) : oppSeat;
+				const teamColor = seat % 2 === 0 ? "var(--team-a)" : "var(--team-b)";
+				return (
+					<div
+						className={`flex flex-col items-center gap-1 ${SEAT_ANIM[isHumanCard ? 0 : 2] ?? "anim-fade"}`}
+					>
+						<div className="rounded-lg p-0.5" style={{ background: `color-mix(in srgb, ${teamColor} 30%, transparent)`, boxShadow: `0 0 8px color-mix(in srgb, ${teamColor} 25%, transparent)` }}>
+							<Card card={myObs.currentTrick.firstCard} />
+						</div>
+						<span className="text-[9px] sm:text-[10px] font-semibold truncate max-w-[100px]" style={{ color: teamColor }}>
+							{seatNames[seat]}
+						</span>
+					</div>
+				);
+			})()}
 		</div>
 	);
 });
@@ -903,12 +1157,11 @@ const FourPTable = memo(function FourPTable({
 								</span>
 							)}
 						</div>
-						<div className={`flex ${dir === "col" ? "flex-col" : ""} gap-0.5 sm:gap-1`}>
-							{Array.from({ length: obs?.otherHandCounts[seat] ?? 3 }).map((_, i) => (
-								<div key={i} className={`anim-deal deal-${i}`}>
-									<CardBack small />
-								</div>
-							))}
+						<div className="flex items-center gap-1">
+							<CardBack small />
+							<span className="text-[9px] sm:text-[10px] text-[var(--text-dim)] font-bold tabular-nums">
+								{obs?.otherHandCounts[seat] ?? 3}
+							</span>
 						</div>
 						{isActive && (
 							<span className="text-[7px] sm:text-[8px] text-[var(--green-light)]">
@@ -923,14 +1176,20 @@ const FourPTable = memo(function FourPTable({
 					{([0, 1, 2, 3] as SeatId[]).map((s) => {
 						const card = trick.cards[s];
 						if (!card) return null;
+						const teamColor = s % 2 === 0 ? "var(--team-a)" : "var(--team-b)";
+						const isPartner = humanSeat >= 0 && teamOf(s) === humanTeam && s !== humanSeat;
+						const isMe = s === humanSeat;
 						return (
 							<div
 								key={s}
 								className={`flex flex-col items-center gap-0.5 ${SEAT_ANIM[s] ?? "anim-fade"}`}
 							>
-								<Card card={card} small />
-								<span className="text-[7px] sm:text-[8px] text-[var(--text-dim)] truncate max-w-[60px]">
-									{seatNames[s]}
+								<div className="rounded-md p-0.5" style={{ background: `color-mix(in srgb, ${teamColor} 30%, transparent)`, boxShadow: `0 0 6px color-mix(in srgb, ${teamColor} 20%, transparent)` }}>
+									<Card card={card} small />
+								</div>
+								<span className="text-[8px] sm:text-[9px] font-semibold truncate max-w-[70px]" style={{ color: teamColor }}>
+									{isMe ? t(locale, "game.you") : seatNames[s]}
+									{isPartner ? ` ★` : ""}
 								</span>
 							</div>
 						);
@@ -1024,12 +1283,12 @@ function Overlay({ children }: { children: React.ReactNode }) {
 	);
 }
 
-const PHRASE_CATEGORIES: Record<string, { en: string; pt: string; es: string }> = {
-	provoke: { en: "Provoke", pt: "Provocar", es: "Provocar" },
-	bluff: { en: "Bluff", pt: "Blefar", es: "Farolear" },
-	celebrate: { en: "Celebrate", pt: "Comemorar", es: "Celebrar" },
-	react: { en: "React", pt: "Reagir", es: "Reaccionar" },
-	encourage: { en: "Partner", pt: "Parceiro", es: "Compa\u00f1ero" },
+const PHRASE_CATEGORIES: Record<string, Record<Locale, string>> = {
+	provoke: { en: "Provoke", pt: "Provocar", es: "Provocar", zh: "\u6311\u8845" },
+	bluff: { en: "Bluff", pt: "Blefar", es: "Farolear", zh: "\u865a\u5f20" },
+	celebrate: { en: "Celebrate", pt: "Comemorar", es: "Celebrar", zh: "\u5e86\u795d" },
+	react: { en: "React", pt: "Reagir", es: "Reaccionar", zh: "\u53cd\u5e94" },
+	encourage: { en: "Partner", pt: "Parceiro", es: "Compa\u00f1ero", zh: "\u642d\u6863" },
 };
 
 function ChatPhraseBar({
@@ -1095,56 +1354,59 @@ const SIGNAL_OPTIONS: { type: string; needsManilha?: string; needsRank?: string 
 ];
 
 function SignalPanel({
-	showPanel,
-	onToggle,
 	onSend,
 	hand,
 	vira,
 	locale,
 }: {
-	showPanel: boolean;
-	onToggle: () => void;
+	showPanel?: boolean;
+	onToggle?: () => void;
 	onSend: (type: string) => void;
 	hand: CardType[];
 	vira: CardType | null;
 	locale: Locale;
 }) {
+	const [sent, setSent] = useState(false);
+
 	// Determine which signals the player can truthfully send
-	const available = SIGNAL_OPTIONS.filter((opt) => {
-		if (opt.type === "NOTHING") return true; // always available
-		if (opt.needsManilha && vira) {
-			return hand.some((c) => checkManilha(c, vira) && c.suit === opt.needsManilha);
-		}
-		if (opt.needsRank) {
-			return hand.some((c) => c.rank === opt.needsRank && (!vira || !checkManilha(c, vira)));
-		}
-		return false;
-	});
+	const available = useMemo(
+		() =>
+			SIGNAL_OPTIONS.filter((opt) => {
+				if (opt.type === "NOTHING") return true;
+				if (opt.needsManilha && vira) {
+					return hand.some((c) => checkManilha(c, vira) && c.suit === opt.needsManilha);
+				}
+				if (opt.needsRank) {
+					return hand.some((c) => c.rank === opt.needsRank && (!vira || !checkManilha(c, vira)));
+				}
+				return false;
+			}),
+		[hand, vira],
+	);
+
+	function handleSend(type: string) {
+		if (sent) return;
+		onSend(type);
+		setSent(true);
+	}
+
+	// Pick top 4 most useful signals to show as inline chips
+	const shown = available.slice(0, 4);
 
 	return (
-		<div className="flex items-center gap-1.5 mt-1 pt-1 border-t border-[var(--border)]/50">
-			<button
-				type="button"
-				onClick={onToggle}
-				className={`px-2.5 py-1 rounded text-[10px] transition-colors ${showPanel ? "bg-[var(--gold-dim)] text-white" : "text-[var(--text-dim)] border border-[var(--border)] hover:text-[var(--text-muted)]"}`}
-			>
-				{t(locale, "signal.button")} {showPanel ? "\u25B4" : "\u25BE"}
-			</button>
-			{showPanel && (
-				<div className="flex gap-1 flex-wrap anim-fade">
-					{available.map((opt) => (
-						<button
-							type="button"
-							key={opt.type}
-							onClick={() => onSend(opt.type)}
-							className="px-2 py-1 rounded text-[10px] bg-[var(--surface-2)] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)] transition-colors"
-							title={t(locale, `signal.${opt.type}`)}
-						>
-							{t(locale, `signal.${opt.type}`)}
-						</button>
-					))}
-				</div>
-			)}
+		<div className={`flex items-center gap-1 mt-1.5 pt-1.5 border-t border-[var(--border)]/50 ${sent ? "opacity-40 pointer-events-none" : ""}`}>
+			<span className="text-[9px] text-[var(--text-dim)] shrink-0">{t(locale, "signal.button")}:</span>
+			{shown.map((opt) => (
+				<button
+					type="button"
+					key={opt.type}
+					onClick={() => handleSend(opt.type)}
+					disabled={sent}
+					className="torn-paper px-2 py-1 text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--text)] transition-all hover:scale-105 disabled:opacity-50"
+				>
+					{t(locale, `signal.${opt.type}`)}
+				</button>
+			))}
 		</div>
 	);
 }
@@ -1221,10 +1483,11 @@ function ErrorBox({
 
 	return (
 		<div
-			className="bg-[var(--surface)] border border-[var(--red)]/40 rounded-lg px-4 sm:px-6 py-4 sm:py-5 text-center max-w-sm mx-4 anim-fade"
+			className="torn-paper px-4 sm:px-6 py-4 sm:py-5 text-center max-w-sm mx-4 anim-fade"
+			style={{ transform: "rotate(0.5deg)" }}
 			role="alert"
 		>
-			<p className="font-bold text-[var(--red)] mb-2">{t(locale, "game.error")}</p>
+			<div className="mb-2"><RansomLabel text={t(locale, "game.error")} className="text-base" /></div>
 			<p className="text-sm text-[var(--text-muted)] leading-relaxed break-words line-clamp-4">
 				{message}
 			</p>
@@ -1233,14 +1496,14 @@ function ErrorBox({
 				<button
 					type="button"
 					onClick={onRetry}
-					className="px-4 py-2 text-sm bg-[var(--accent)] text-white rounded min-h-[44px] hover:bg-[var(--accent-light)] transition-colors"
+					className="torn-paper !bg-[var(--accent)] text-white px-4 py-2 text-sm min-h-[44px] hover:scale-105 transition-transform"
 				>
 					{t(locale, "game.retry")}
 				</button>
 				<button
 					type="button"
 					onClick={onBack}
-					className="px-4 py-2 text-sm bg-[var(--surface-2)] border border-[var(--border)] rounded min-h-[44px] hover:border-[var(--border-light)] transition-colors"
+					className="torn-paper px-4 py-2 text-sm text-[var(--text-muted)] min-h-[44px] hover:scale-105 transition-transform"
 				>
 					{t(locale, "game.setup")}
 				</button>
@@ -1253,13 +1516,23 @@ function WinBox({
 	snap,
 	humanSeat,
 	seatNames,
+	log,
+	startTime,
+	config,
+	gameId,
 	onNewGame,
+	onRematch,
 	locale,
 }: {
 	snap: GameSnapshot;
 	humanSeat: number;
 	seatNames: string[];
+	log: LogEntry[];
+	startTime: number;
+	config: GameConfig;
+	gameId: string;
 	onNewGame: () => void;
+	onRematch?: () => void;
 	locale: Locale;
 }) {
 	const is4p = snap.mode === "4p";
@@ -1268,43 +1541,132 @@ function WinBox({
 	const teamNames = is4p
 		? [`${seatNames[0]} + ${seatNames[2]}`, `${seatNames[1]} + ${seatNames[3]}`]
 		: [seatNames[0], seatNames[1]];
-	const titleColor = won ? "var(--green-light)" : humanSeat < 0 ? "var(--gold)" : "var(--red)";
-	const borderColor = won ? "var(--green)" : humanSeat < 0 ? "var(--gold-dim)" : "var(--red)";
+
+	const resultText = humanSeat < 0
+		? t(locale, "game.wins", { name: teamNames[snap.winner!]! })
+		: won
+			? t(locale, "game.youWin")
+			: t(locale, "game.youLost");
+
+	const stats = useMemo(() => computeStats(log, snap, startTime), [log, snap, startTime]);
+	const scoreText = `${snap.scores[0]}-${snap.scores[1]}`;
+
+	// Save result to history on mount
+	useEffect(() => {
+		const result: GameResult = {
+			id: gameId,
+			timestamp: Date.now(),
+			players: config.players.map((p, i) => ({
+				name: seatNames[i] ?? `Seat ${i}`,
+				model: p.model ?? "",
+				type: p.type,
+			})),
+			scores: snap.scores,
+			winner: snap.winner ?? 0,
+			mode: snap.mode,
+			stats,
+		};
+		saveGameResult(result);
+	}, []);
+
+	function handleShare() {
+		const result: GameResult = {
+			id: gameId,
+			timestamp: Date.now(),
+			players: config.players.map((p, i) => ({
+				name: seatNames[i] ?? `Seat ${i}`,
+				model: p.model ?? "",
+				type: p.type,
+			})),
+			scores: snap.scores,
+			winner: snap.winner ?? 0,
+			mode: snap.mode,
+			stats,
+		};
+		const encoded = encodeResultForShare(result);
+		const url = `${window.location.origin}/results?r=${encoded}`;
+		const shareTextKey = humanSeat < 0 ? "share.spectateText" : won ? "share.winText" : "share.loseText";
+		const text = t(locale, shareTextKey, {
+			score: scoreText,
+			winner: teamNames[snap.winner ?? 0] ?? "",
+		});
+
+		if (navigator.share) {
+			navigator.share({ title: "TrucoBench", text, url }).catch(() => {});
+		} else {
+			navigator.clipboard.writeText(`${text} ${url}`).then(() => {
+				import("./Toast").then(({ addToast }) => addToast("success", t(locale, "share.copied")));
+			}).catch(() => {});
+		}
+	}
 
 	return (
 		<div
-			className="bg-[var(--surface)] border-2 rounded-xl px-6 sm:px-8 py-6 sm:py-8 text-center mx-4 anim-callout"
-			style={{ borderColor }}
+			className="torn-paper tape px-5 sm:px-8 py-5 sm:py-8 text-center mx-2 sm:mx-4 anim-callout max-w-sm w-full"
+			style={{ "--tape-r": "-2deg", transform: "rotate(0.5deg)" } as React.CSSProperties}
 		>
 			{/* Trophy / result icon */}
-			<div className="text-4xl sm:text-5xl mb-2 anim-score">
+			<div className="text-4xl sm:text-5xl mb-3 anim-score">
 				{won ? "\uD83C\uDFC6" : humanSeat < 0 ? "\uD83C\uDFAE" : "\uD83D\uDE14"}
 			</div>
-			<p className="text-xl sm:text-2xl font-bold mb-1 truncate font-display" style={{ color: titleColor }}>
-				{humanSeat < 0
-					? t(locale, "game.wins", { name: teamNames[snap.winner!]! })
-					: won
-						? t(locale, "game.youWin")
-						: t(locale, "game.youLost")}
-			</p>
+			<div className="mb-2">
+				<RansomTitle text={resultText} className="text-xl sm:text-2xl" />
+			</div>
 			<p className="text-lg text-[var(--text-muted)] tabular-nums mb-1 font-bold">
 				{snap.scores[0]} &ndash; {snap.scores[1]}
 			</p>
-			<p className="text-[11px] text-[var(--text-dim)] mb-5">
+			<p className="text-[11px] text-[var(--text-dim)] mb-4">
 				{teamNames[0]} vs {teamNames[1]}
 			</p>
+
+			{/* Stats grid */}
+			<div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-left text-xs mb-5 px-2 py-2.5 rounded-lg bg-[var(--surface)]/50 border border-[var(--border)]/30">
+				<div>
+					<span className="text-[var(--text-dim)]">{t(locale, "stats.rounds")}</span>
+					<span className="ml-1 font-bold tabular-nums">{stats.rounds}</span>
+				</div>
+				<div>
+					<span className="text-[var(--text-dim)]">{t(locale, "stats.time")}</span>
+					<span className="ml-1 font-bold tabular-nums">{formatDuration(stats.duration)}</span>
+				</div>
+				<div>
+					<span className="text-[var(--text-dim)]">{t(locale, "stats.trucos")}</span>
+					<span className="ml-1 font-bold tabular-nums">{stats.trucosCalled}</span>
+					{stats.trucosAccepted > 0 && (
+						<span className="text-[10px] text-[var(--text-dim)]"> ({stats.trucosAccepted} acc)</span>
+					)}
+				</div>
+				<div>
+					<span className="text-[var(--text-dim)]">{t(locale, "stats.folds")}</span>
+					<span className="ml-1 font-bold tabular-nums">{stats.folds}</span>
+				</div>
+			</div>
+
+			{/* Actions */}
 			<div className="flex gap-2 justify-center flex-wrap">
 				<button
 					type="button"
-					onClick={onNewGame}
-					className="px-5 py-2.5 text-sm bg-[var(--accent)] text-white rounded-lg font-semibold min-h-[44px] hover:bg-[var(--accent-light)] transition-colors"
+					onClick={handleShare}
+					className="torn-paper !bg-[var(--green)] text-white px-4 py-2.5 text-sm font-semibold min-h-[44px] hover:scale-105 transition-transform inline-flex items-center gap-1.5"
 				>
-					{t(locale, "game.playAgain")}
+					<svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+						<path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11A2.99 2.99 0 0 0 18 8.04c1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81A2.99 2.99 0 0 0 6 8.96c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.88-2.92-2.88z" />
+					</svg>
+					{t(locale, "share.button")}
 				</button>
+				{onRematch && (
+					<button
+						type="button"
+						onClick={onRematch}
+						className="torn-paper !bg-[var(--accent)] text-white px-4 py-2.5 text-sm font-semibold min-h-[44px] hover:scale-105 transition-transform"
+					>
+						{t(locale, "game.rematch")}
+					</button>
+				)}
 				<button
 					type="button"
 					onClick={onNewGame}
-					className="px-5 py-2.5 text-sm bg-[var(--surface-2)] border border-[var(--border)] rounded-lg text-[var(--text-muted)] min-h-[44px] hover:border-[var(--border-light)] transition-colors"
+					className="torn-paper px-4 py-2.5 text-sm text-[var(--text-muted)] min-h-[44px] hover:scale-105 transition-transform"
 				>
 					{t(locale, "game.changeSetup")}
 				</button>

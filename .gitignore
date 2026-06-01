@@ -31,6 +31,9 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # Vercel
 .vercel
 
+# Claude Code
+.claude/
+
 # IntelliJ / VS Code
 .idea
 .vscode
@@ -38,9 +41,22 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # OS
 .DS_Store
 Thumbs.db
+nul
+
+# Screenshots & Playwright artifacts
+*.png
+.playwright-mcp/
 
 # Experiment results (synced separately)
 results/
+experiments/*.json
+!experiments/01-main-tournament.json
+!experiments/02-frontier-tournament.json
+!experiments/diagnostics-v1.json
 
 # Draft docs
 ROADMAP.md
+
+# Paper artifacts
+paper/sections/diagnostic_table.tex
+paper/pre-print-v1.tex

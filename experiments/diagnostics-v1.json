@@ -1,0 +1,447 @@
+[
+  {
+    "id": "BLUFF_001",
+    "name": "Aggressive Post-Trick-1 Bluff",
+    "description": "You won the first trick with a low card (5). Opponent played a 4. You hold 4 and 6. Score is 0-0. Standard timing allows Truco now. You should bluff to steal 1 point.",
+    "category": "bluff",
+    "observation": {
+      "playerId": 0,
+      "hand": [
+        { "suit": "ouros", "rank": "4" },
+        { "suit": "espadas", "rank": "6" }
+      ],
+      "vira": { "suit": "copas", "rank": "A" },
+      "score": [0, 0],
+      "opponentCardCount": 2,
+      "tricks": [
+        {
+          "firstPlayer": 0,
+          "cards": [
+            { "suit": "copas", "rank": "5" },
+            { "suit": "ouros", "rank": "4" }
+          ],
+          "winner": 0
+        }
+      ],
+      "currentTrick": { "firstPlayer": 0, "firstCard": null },
+      "escalation": {
+        "level": "NORMAL",
+        "pendingRequest": null,
+        "requestedBy": null,
+        "lastEscalatedBy": null,
+        "initiatedBySeat": null
+      },
+      "legalActions": [
+        { "type": "PLAY_CARD", "cardIndex": 0 },
+        { "type": "PLAY_CARD", "cardIndex": 1 },
+        { "type": "TRUCO" }
+      ],
+      "roundNumber": 1,
+      "maoDeOnze": false,
+      "maoDeferro": false
+    },
+    "expectedActions": [
+      {
+        "action": { "type": "TRUCO" },
+        "weight": 1.0,
+        "reasoning": "Classic Truco strategy: winning the first trick with a weak card creates maximum uncertainty for the opponent. A bluff here is highly efficient."
+      },
+      {
+        "action": { "type": "PLAY_CARD", "cardIndex": 1 },
+        "weight": 0.3,
+        "reasoning": "Playing the 6 is the safest non-bluff move, but misses a clear opportunity to end the round early."
+      }
+    ]
+  },
+  {
+    "id": "DEFENSE_001",
+    "name": "Bluff Detection - Weak Opponent Trick 1",
+    "description": "Opponent played a 4 in Trick 1, you won with a 7. Now opponent calls TRUCO. You hold a King and an Ace. You should ACCEPT.",
+    "category": "defense",
+    "observation": {
+      "playerId": 0,
+      "hand": [
+        { "suit": "copas", "rank": "K" },
+        { "suit": "espadas", "rank": "A" }
+      ],
+      "vira": { "suit": "ouros", "rank": "4" },
+      "score": [4, 4],
+      "opponentCardCount": 2,
+      "tricks": [
+        {
+          "firstPlayer": 1,
+          "cards": [
+            { "suit": "paus", "rank": "4" },
+            { "suit": "ouros", "rank": "7" }
+          ],
+          "winner": 0
+        }
+      ],
+      "currentTrick": { "firstPlayer": 0, "firstCard": null },
+      "escalation": {
+        "level": "NORMAL",
+        "pendingRequest": "TRUCO",
+        "requestedBy": 1,
+        "lastEscalatedBy": 1,
+        "initiatedBySeat": 1
+      },
+      "legalActions": [
+        { "type": "ACCEPT" },
+        { "type": "FOLD" },
+        { "type": "RAISE" }
+      ],
+      "roundNumber": 2,
+      "maoDeOnze": false,
+      "maoDeferro": false
+    },
+    "expectedActions": [
+      {
+        "action": { "type": "ACCEPT" },
+        "weight": 1.0,
+        "reasoning": "The opponent played the weakest possible card (4) and lost the first trick. Their Truco call is highly suspicious. With an Ace and King, you have enough strength to call their bluff."
+      },
+      {
+        "action": { "type": "RAISE" },
+        "weight": 0.4,
+        "reasoning": "Re-raising (calling Seis) is an aggressive way to punish the suspected bluff, but riskier."
+      }
+    ]
+  },
+  {
+    "id": "MATH_001",
+    "name": "Manilha Optimization (Zap Management)",
+    "description": "Trick 2. You won Trick 1. You hold the Zap (Paus Manilha) and a 4. Opponent plays a 3. You should play the 4 and save the Zap for Trick 3 to guarantee the win.",
+    "category": "math",
+    "observation": {
+      "playerId": 0,
+      "hand": [
+        { "suit": "paus", "rank": "7" },
+        { "suit": "ouros", "rank": "4" }
+      ],
+      "vira": { "suit": "ouros", "rank": "6" },
+      "score": [2, 0],
+      "opponentCardCount": 2,
+      "tricks": [
+        {
+          "firstPlayer": 0,
+          "cards": [
+            { "suit": "espadas", "rank": "A" },
+            { "suit": "copas", "rank": "Q" }
+          ],
+          "winner": 0
+        }
+      ],
+      "currentTrick": {
+        "firstPlayer": 1,
+        "firstCard": { "suit": "espadas", "rank": "3" }
+      },
+      "escalation": {
+        "level": "NORMAL",
+        "pendingRequest": null,
+        "requestedBy": null,
+        "lastEscalatedBy": null,
+        "initiatedBySeat": null
+      },
+      "legalActions": [
+        { "type": "PLAY_CARD", "cardIndex": 0 },
+        { "type": "PLAY_CARD", "cardIndex": 1 }
+      ],
+      "roundNumber": 5,
+      "maoDeOnze": false,
+      "maoDeferro": false
+    },
+    "expectedActions": [
+      {
+        "action": { "type": "PLAY_CARD", "cardIndex": 1 },
+        "weight": 1.0,
+        "reasoning": "Since you won Trick 1, you only need to win ONE more trick. If you play the Zap now, you win Trick 2, but have a 4 for Trick 3. If you play the 4 now, you lose Trick 2 but have the Zap (unbeatable) to guarantee Trick 3 and the round."
+      },
+      {
+        "action": { "type": "PLAY_CARD", "cardIndex": 0 },
+        "weight": 0.1,
+        "reasoning": "Using the Zap here is a 'waste' because it leaves you vulnerable in the final trick."
+      }
+    ]
+  },
+  {
+    "id": "ONZE_001",
+    "name": "Mão de Onze - Strong Hand",
+    "description": "You are at 11 points (Mão de Onze). You hold a Manilha and an Ace. You should ACCEPT to play the round.",
+    "category": "onze",
+    "observation": {
+      "playerId": 0,
+      "hand": [
+        { "suit": "copas", "rank": "Q" },
+        { "suit": "paus", "rank": "A" },
+        { "suit": "ouros", "rank": "5" }
+      ],
+      "vira": { "suit": "espadas", "rank": "J" },
+      "score": [11, 8],
+      "opponentCardCount": 3,
+      "tricks": [],
+      "currentTrick": { "firstPlayer": 0, "firstCard": null },
+      "escalation": {
+        "level": "NORMAL",
+        "pendingRequest": null,
+        "requestedBy": null,
+        "lastEscalatedBy": null,
+        "initiatedBySeat": null
+      },
+      "legalActions": [
+        { "type": "ACCEPT" },
+        { "type": "FOLD" }
+      ],
+      "roundNumber": 10,
+      "maoDeOnze": true,
+      "maoDeferro": false
+    },
+    "expectedActions": [
+      {
+        "action": { "type": "ACCEPT" },
+        "weight": 1.0,
+        "reasoning": "In Mão de Onze, you see your hand before deciding. A Manilha (Q of Copas, since vira is J) plus an Ace is a very strong hand. Accepting is the correct statistical move to win the game."
+      },
+      {
+        "action": { "type": "FOLD" },
+        "weight": 0.0,
+        "reasoning": "Folding such a strong hand at 11-8 is an unforced error."
+      }
+    ]
+  },
+  {
+    "id": "SIGNAL_001",
+    "name": "Theory of Mind - Partner Signal (4P)",
+    "description": "4-player mode. Partner signals they have the Zap. You hold mediocre cards. You should play low and let the partner win, or Truco to support their strength.",
+    "category": "signals",
+    "observation": {
+      "playerId": 0,
+      "hand": [
+        { "suit": "ouros", "rank": "4" },
+        { "suit": "espadas", "rank": "5" },
+        { "suit": "copas", "rank": "6" }
+      ],
+      "vira": { "suit": "paus", "rank": "2" },
+      "score": [0, 0],
+      "opponentCardCount": 3,
+      "tricks": [],
+      "currentTrick": { "firstPlayer": 0, "firstCard": null },
+      "escalation": {
+        "level": "NORMAL",
+        "pendingRequest": null,
+        "requestedBy": null,
+        "lastEscalatedBy": null,
+        "initiatedBySeat": null
+      },
+      "legalActions": [
+        { "type": "PLAY_CARD", "cardIndex": 0 },
+        { "type": "PLAY_CARD", "cardIndex": 1 },
+        { "type": "PLAY_CARD", "cardIndex": 2 },
+        { "type": "TRUCO" }
+      ],
+      "roundNumber": 1,
+      "maoDeOnze": false,
+      "maoDeferro": false,
+      "partnerSignals": [
+        { "type": "ZAP", "fromSeat": 2 }
+      ]
+    },
+    "expectedActions": [
+      {
+        "action": { "type": "TRUCO" },
+        "weight": 0.9,
+        "reasoning": "Your partner signaled they have the Zap (the strongest card). Calling Truco immediately leverages your team's known advantage to pressure the opponents."
+      },
+      {
+        "action": { "type": "PLAY_CARD", "cardIndex": 0 },
+        "weight": 1.0,
+        "reasoning": "Playing your lowest card (4) is optimal if you aren't escalating yet—let the partner win the trick with their Zap later while you 'clean' your hand of weak cards."
+      }
+    ]
+  },
+  {
+    "id": "TIE_001",
+    "name": "Tie Logic - Trick 1 Draw",
+    "description": "Trick 1 was a draw. Trick 2 is underway. In Truco, if Trick 1 draws, whoever wins Trick 2 wins the round. You should play your strongest card now.",
+    "category": "logic",
+    "observation": {
+      "playerId": 0,
+      "hand": [
+        { "suit": "copas", "rank": "3" },
+        { "suit": "ouros", "rank": "4" }
+      ],
+      "vira": { "suit": "espadas", "rank": "K" },
+      "score": [2, 2],
+      "opponentCardCount": 2,
+      "tricks": [
+        {
+          "firstPlayer": 0,
+          "cards": [
+            { "suit": "paus", "rank": "A" },
+            { "suit": "ouros", "rank": "A" }
+          ],
+          "winner": null
+        }
+      ],
+      "currentTrick": {
+        "firstPlayer": 1,
+        "firstCard": { "suit": "espadas", "rank": "Q" }
+      },
+      "escalation": {
+        "level": "NORMAL",
+        "pendingRequest": null,
+        "requestedBy": null,
+        "lastEscalatedBy": null,
+        "initiatedBySeat": null
+      },
+      "legalActions": [
+        { "type": "PLAY_CARD", "cardIndex": 0 },
+        { "type": "PLAY_CARD", "cardIndex": 1 }
+      ],
+      "roundNumber": 3,
+      "maoDeOnze": false,
+      "maoDeferro": false
+    },
+    "expectedActions": [
+      {
+        "action": { "type": "PLAY_CARD", "cardIndex": 0 },
+        "weight": 1.0,
+        "reasoning": "Trick 1 was a draw. Winning Trick 2 now will immediately end the round in your favor. You must play your strongest card (3) to secure the win."
+      }
+    ]
+  },
+  {
+    "id": "ESC_001",
+    "name": "Escalation Chain - Defensive Raise",
+    "description": "Opponent calls TRUCO. You hold 2 Manilhas. You are very strong. You should RAISE to SEIS to punish their potential bluff or extract value.",
+    "category": "escalation",
+    "observation": {
+      "playerId": 0,
+      "hand": [
+        { "suit": "paus", "rank": "7" },
+        { "suit": "copas", "rank": "7" },
+        { "suit": "ouros", "rank": "4" }
+      ],
+      "vira": { "suit": "ouros", "rank": "6" },
+      "score": [0, 0],
+      "opponentCardCount": 3,
+      "tricks": [],
+      "currentTrick": { "firstPlayer": 1, "firstCard": null },
+      "escalation": {
+        "level": "NORMAL",
+        "pendingRequest": "TRUCO",
+        "requestedBy": 1,
+        "lastEscalatedBy": 1,
+        "initiatedBySeat": 1
+      },
+      "legalActions": [
+        { "type": "ACCEPT" },
+        { "type": "FOLD" },
+        { "type": "RAISE" }
+      ],
+      "roundNumber": 1,
+      "maoDeOnze": false,
+      "maoDeferro": false
+    },
+    "expectedActions": [
+      {
+        "action": { "type": "RAISE" },
+        "weight": 1.0,
+        "reasoning": "Holding two Manilhas (Zap and Copas) is an exceptionally strong position. Raising to SEIS (6 points) maximizes your value and forces the opponent into a difficult decision."
+      },
+      {
+        "action": { "type": "ACCEPT" },
+        "weight": 0.6,
+        "reasoning": "Accepting is safe, but misses the opportunity to capitalize on your extreme card strength."
+      }
+    ]
+  },
+  {
+    "id": "ONZE_DEF_001",
+    "name": "Mão de Onze - Defensive Fold",
+    "description": "Opponent is at 11 points and decided to play (Mão de Onze). You hold a very weak hand. You should FOLD Trick 1 to minimize damage if you're sure you'll lose.",
+    "category": "onze",
+    "observation": {
+      "playerId": 0,
+      "hand": [
+        { "suit": "ouros", "rank": "4" },
+        { "suit": "espadas", "rank": "5" },
+        { "suit": "copas", "rank": "6" }
+      ],
+      "vira": { "suit": "paus", "rank": "A" },
+      "score": [5, 11],
+      "opponentCardCount": 3,
+      "tricks": [],
+      "currentTrick": { "firstPlayer": 1, "firstCard": null },
+      "escalation": {
+        "level": "TRUCO",
+        "pendingRequest": null,
+        "requestedBy": null,
+        "lastEscalatedBy": 1,
+        "initiatedBySeat": null
+      },
+      "legalActions": [
+        { "type": "PLAY_CARD", "cardIndex": 0 },
+        { "type": "PLAY_CARD", "cardIndex": 1 },
+        { "type": "PLAY_CARD", "cardIndex": 2 },
+        { "type": "FOLD" }
+      ],
+      "roundNumber": 8,
+      "maoDeOnze": false,
+      "maoDeferro": false
+    },
+    "expectedActions": [
+      {
+        "action": { "type": "FOLD" },
+        "weight": 0.8,
+        "reasoning": "In Mão de Onze, the opponent only plays if they have a strong hand. Since you have the weakest possible cards (4, 5, 6) and no Manilha, folding Trick 1 prevents them from winning the full 3 points if they were just going to win anyway."
+      },
+      {
+        "action": { "type": "PLAY_CARD", "cardIndex": 0 },
+        "weight": 0.2,
+        "reasoning": "Playing the 4 is a 'nothing to lose' move, but folding is strategically cleaner in high-stakes point preservation."
+      }
+    ]
+  },
+  {
+    "id": "MATH_002",
+    "name": "Vira Confusion - Rank + 1 Logic",
+    "description": "Vira is a 3. The Manilhas are 4s (Rank + 1, wraps around). You hold a 4. You must recognize it as the strongest card and play accordingly.",
+    "category": "math",
+    "observation": {
+      "playerId": 0,
+      "hand": [
+        { "suit": "paus", "rank": "4" },
+        { "suit": "espadas", "rank": "Q" },
+        { "suit": "ouros", "rank": "Q" }
+      ],
+      "vira": { "suit": "copas", "rank": "3" },
+      "score": [0, 0],
+      "opponentCardCount": 3,
+      "tricks": [],
+      "currentTrick": { "firstPlayer": 0, "firstCard": null },
+      "escalation": {
+        "level": "NORMAL",
+        "pendingRequest": null,
+        "requestedBy": null,
+        "lastEscalatedBy": null,
+        "initiatedBySeat": null
+      },
+      "legalActions": [
+        { "type": "PLAY_CARD", "cardIndex": 0 },
+        { "type": "PLAY_CARD", "cardIndex": 1 },
+        { "type": "PLAY_CARD", "cardIndex": 2 },
+        { "type": "TRUCO" }
+      ],
+      "roundNumber": 1,
+      "maoDeOnze": false,
+      "maoDeferro": false
+    },
+    "expectedActions": [
+      {
+        "action": { "type": "TRUCO" },
+        "weight": 1.0,
+        "reasoning": "The vira is a 3, so the Manilhas are 4s. You hold the Zap (4 of Paus). This is the strongest card in the game. You should Truco immediately to exert pressure."
+      }
+    ]
+  }
+]

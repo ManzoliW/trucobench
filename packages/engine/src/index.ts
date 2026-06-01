@@ -54,6 +54,7 @@ export type {
 	TrickResult,
 	RoundResult,
 	EscalationState,
+	TrucoTiming,
 	RoundState,
 	GameState,
 	Observation,
