@@ -1,5 +1,5 @@
 {
-  "buildCommand": "bun install && cd packages/web && next build",
+  "buildCommand": "bash scripts/vercel-build.sh",
   "outputDirectory": "packages/web/.next",
   "installCommand": "bun install",
   "framework": "nextjs"

@@ -4,7 +4,7 @@
 	"type": "module",
 	"workspaces": ["packages/*"],
 	"scripts": {
-		"build": "cd packages/web && next build",
+		"build": "bash scripts/vercel-build.sh",
 		"test": "bun test",
 		"check": "biome check .",
 		"check:fix": "biome check --write .",
@@ -13,7 +13,8 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.0",
-		"@types/bun": "latest"
+		"@types/bun": "latest",
+		"next": "^15.1.7"
 	},
 	"peerDependencies": {
 		"typescript": "^5"
