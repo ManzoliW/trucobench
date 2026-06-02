@@ -1,0 +1,21 @@
+\begin{table}[ht]
+\centering
+\caption{Language Bias: English vs Portuguese}
+\label{tab:language_bias}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Model & EN (LLMWiki) & PT (LLMWiki) & Language $\Delta$ & Inv.Info $\Delta$ (EN) & Inv.Info $\Delta$ (PT) \\ 
+\midrule
+gemini-2.5-pro & 75.6 & 100.0 & \textcolor{green}{+24.4} & \textcolor{red}{-24.4} & 0.0 \\ 
+gpt-4o & 73.3 & 100.0 & \textcolor{green}{+26.7} & \textcolor{red}{-26.7} & 0.0 \\ 
+claude-sonnet-4.6 & 66.7 & 100.0 & \textcolor{green}{+33.3} & \textcolor{red}{-33.3} & 0.0 \\ 
+kimi-k2.5 & 62.2 & 100.0 & \textcolor{green}{+37.8} & \textcolor{red}{-37.8} & 0.0 \\ 
+deepseek-r1 & 56.7 & 100.0 & \textcolor{green}{+43.3} & \textcolor{red}{-43.3} & 0.0 \\ 
+gemini-2.5-flash & 75.6 & 100.0 & \textcolor{green}{+24.4} & \textcolor{red}{-24.4} & 0.0 \\ 
+gpt-4o-mini & 71.1 & 100.0 & \textcolor{green}{+28.9} & \textcolor{red}{-28.9} & 0.0 \\ 
+claude-haiku-4.5 & 61.1 & 100.0 & \textcolor{green}{+38.9} & \textcolor{red}{-38.9} & 0.0 \\ 
+qwen-3.7-max & 73.3 & 100.0 & \textcolor{green}{+26.7} & \textcolor{red}{-26.7} & 0.0 \\ 
+qwen-3.7-plus & 66.7 & 0.0 & \textcolor{red}{-66.7} & \textcolor{green}{+66.7} & 0.0 \\ 
+\bottomrule
+\end{tabular}
+\end{table}

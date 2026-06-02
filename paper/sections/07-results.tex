@@ -1,14 +1,24 @@
-\\section{Results}
+\\section{Results (Preprint v2)}
 
-In this section, we present the findings from our benchmark suite, encompassing both diagnostic scenarios and the round-robin tournament.
+In this section, we present the findings from our benchmark suite, encompassing both diagnostic scenarios and the round-robin tournament. This version (Preprint v2) utilizes the \textbf{LLMWiki} prompting style across all evaluations.
 
 \\subsection{Diagnostic Scenarios}
 
-The diagnostic evaluation serves as a luck-independent measure of strategic "intuition." We evaluated five representative models against a curated set of 9 scenarios covering core Truco Paulista mechanics.
+The diagnostic evaluation serves as a luck-independent measure of strategic "intuition." We evaluated four representative models against a curated set of 9 scenarios covering core Truco mechanics, leveraging the LLMWiki "cheat sheet" format to isolate strategic logic from rank calculation.
 
 \\input{sections/diagnostic_table}
 
-The results in Table~\\ref{tab:diagnostics} reveal a significant "Knowing-Doing Gap." While frontier models like GPT-4o exhibit 100\\% accuracy in bluffing and defense scenarios, they struggle with hidden-information logic. Specifically, in scenario \\texttt{MATH\\_001} (Zap Management), GPT-4o consistently prioritized immediate trick victory over round security, a sub-optimal play in high-level Truco.
+The results in Table~\\ref{tab:diagnostics} (Deterministic $T=0.0$ configuration) reveal a significant "Knowing-Doing Gap." While frontier models exhibit near-perfect accuracy in psychological categories like Bluffing, they struggle with hidden-information Logic and defensive optimization. Notably, \textbf{Gemini 2.5 Pro} and \textbf{Claude Sonnet 4.6} lead the deterministic leaderboard, followed closely by \textbf{Kimi-k2.5}, which demonstrated strong reasoning capabilities despite its lower category-specific scores in previous $T=0.7$ runs.
+
+\\subsection{Ablation Study: The Inverse Information Effect}
+
+To evaluate the impact of the \textbf{LLMWiki} technique, we conducted a deterministic ablation study across 8 models using an XML-structured format.
+
+\\input{sections/comparison_table}
+
+As shown in Table~\\ref{tab:ablation}, we observe a persistent \textbf{"Inverse Information Effect"} across most OpenAI and reasoning-heavy models (e.g., \textbf{GPT-4o} $-\textbf{21.1}\%$, \textbf{DeepSeek-R1} $-\textbf{11.1}\%$). In these architectures, providing explicit card-strength "cheat sheets" likely acted as a cognitive distraction, interfering with the models' established internal heuristics for rank-ordering.
+
+However, \textbf{Kimi-k2.5} (+\textbf{8.9}\%) and \textbf{Gemini 2.5 Pro} (+\textbf{5.6}\%) emerged as significant exceptions. These models appear uniquely capable of utilizing explicit XML-structured reference tables to correct or augment their internal strategic logic. Preprint v2.3 thus establishes that the utility of prompt-level domain injection is highly architecture-dependent, with "Thinking" and "GPT-family" models being more susceptible to information-overload interference than their competitors.
 
 \\subsection{Main Tournament}
 

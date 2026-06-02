@@ -1,0 +1,19 @@
+\begin{table}[ht]
+\centering
+\caption{Ablation Study (T=0.0): Standard vs. LLMWiki Prompting (Overall Accuracy \%)}
+\label{tab:ablation}
+\begin{tabular}{lccc}
+\toprule
+Model & Standard (v1) & LLMWiki (v2) & Delta \\ 
+\midrule
+gpt-4o & 82.2 & 61.1 & \textcolor{red}{-21.1} \\ 
+gemini-2.5-pro & 74.4 & 80.0 & +\textbf{5.6} \\ 
+claude-sonnet-4.6 & 80.0 & 71.1 & \textcolor{red}{-8.9} \\ 
+deepseek-r1 & 66.7 & 55.6 & \textcolor{red}{-11.1} \\ 
+gpt-4o-mini & 75.6 & 53.3 & \textcolor{red}{-22.2} \\ 
+gemini-2.5-flash & 80.0 & 58.9 & \textcolor{red}{-21.1} \\ 
+claude-haiku-4.5 & 51.1 & 52.2 & +\textbf{1.1} \\ 
+moonshotai-kimi-k2.5 & 61.1 & 70.0 & +\textbf{8.9} \\ 
+\bottomrule
+\end{tabular}
+\end{table}

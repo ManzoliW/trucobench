@@ -1,6 +1,6 @@
-\section{Truco Paulista as a POSG}
+\section{Truco Variants and Formalization}
 
-We formalize Truco Paulista as a two-player Partially Observable Stochastic Game (POSG), defined by the tuple $\langle \mathcal{N}, \mathcal{S}, \{\mathcal{A}_i\}, \{\mathcal{O}_i\}, T, O, R \rangle$.
+We formalize Truco as a two-player Partially Observable Stochastic Game (POSG), defined by the tuple $\langle \mathcal{N}, \mathcal{S}, \{\mathcal{A}_i\}, \{\mathcal{O}_i\}, T, O, R \rangle$. TrucoBench supports two primary regional variants: \textbf{Truco Paulista} (the most common in São Paulo) and \textbf{Truco Mineiro} (common in Minas Gerais).
 
 \subsection{Players and State Space}
 
@@ -8,9 +8,14 @@ We formalize Truco Paulista as a two-player Partially Observable Stochastic Game
 
 \textbf{State space} $\mathcal{S}$ comprises:
 \begin{itemize}
+    \item \textbf{Game Variant:} $v \in \{\text{Paulista, Mineiro}\}$.
     \item \textbf{Deck state:} The 40-card deck permutation and deal assignment.
     \item \textbf{Hands:} $h_i \subseteq \mathcal{C}$, where $|\mathcal{C}| = 40$ and $|h_i| \leq 3$.
-    \item \textbf{Vira:} The revealed community card $v \in \mathcal{C}$ that determines the manilha rank.
+    \item \textbf{Trump State (Manilhas):}
+        \begin{itemize}
+            \item \textbf{Paulista:} Determined by a revealed community card (vira) $v \in \mathcal{C}$. The manilha rank is one step above $v$.
+            \item \textbf{Mineiro:} Fixed four cards (4♣, 7♥, A♠, 7♦) are always the manilhas.
+        \end{itemize}
     \item \textbf{Trick history:} The sequence of cards played in the current round, $\tau = [(c_1^{(t)}, c_2^{(t)})]_{t=1}^{k}$ for $k \leq 3$ tricks.
     \item \textbf{Escalation state:} $(l, p, r) \in \mathcal{L} \times (\mathcal{N} \cup \{\bot\}) \times (\mathcal{N} \cup \{\bot\})$, where $l$ is the current level, $p$ is a pending request, and $r$ is the last player to escalate.
     \item \textbf{Game score:} $(s_1, s_2) \in \{0, \ldots, 12\}^2$.
@@ -20,76 +25,51 @@ We formalize Truco Paulista as a two-player Partially Observable Stochastic Game
 
 Player $i$'s observation $o_i \in \mathcal{O}_i$ includes:
 \begin{itemize}
+    \item Game variant $v$
     \item Their own hand $h_i$
-    \item The vira card $v$
+    \item The vira card (if Paulista)
     \item The number of cards in the opponent's hand $|h_{-i}|$
-    \item The trick history $\tau$ (all played cards are public)
+    \item The trick history $\tau$
     \item The escalation state $(l, p, r)$
     \item The game score $(s_1, s_2)$
 \end{itemize}
 
-Crucially, player $i$ \emph{never} observes the opponent's hand $h_{-i}$, making this a game of imperfect information.
+\subsection{Escalation FSM and Scoring}
 
-\subsection{Action Space}
+The escalation mechanic increases the points at stake for the round. The point progression differs by variant (Table~\ref{tab:scoring-variants}).
 
-The action space $\mathcal{A}_i$ is context-dependent:
-\begin{itemize}
-    \item \textbf{Card play:} $\texttt{PLAY\_CARD}(j)$ for $j \in \{0, \ldots, |h_i|-1\}$
-    \item \textbf{Escalation:} $\texttt{TRUCO}$ (initiate or implied by context)
-    \item \textbf{Response:} $\texttt{ACCEPT}$, $\texttt{RAISE}$, $\texttt{FOLD}$
-\end{itemize}
-
-\subsection{Escalation FSM}
-
-The escalation mechanic is modeled as a finite state machine (Figure~\ref{fig:escalation-fsm}):
-
-\begin{figure}[h]
+\begin{table}[h]
 \centering
-\begin{tikzpicture}[
-    ->,>=Stealth,
-    node distance=2.5cm,
-    every state/.style={thick, minimum size=1.2cm},
-    every edge/.append style={thick}
-]
-    \node[state] (N) {$1$};
-    \node[state, right of=N] (T) {$3$};
-    \node[state, right of=T] (S) {$6$};
-    \node[state, right of=S] (V) {$9$};
-    \node[state, right of=V] (D) {$12$};
+\caption{Point progression across variants.}
+\label{tab:scoring-variants}
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Variant} & \textbf{Normal} & \textbf{Truco} & \textbf{Seis} & \textbf{Nove} & \textbf{Doze} \\
+\midrule
+Paulista & 1 & 3 & 6 & 9 & 12 \\
+Mineiro  & 2 & 4 & 8 & 10 & 12 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-    \path (N) edge[bend left] node[above] {\footnotesize TRUCO} (T);
-    \path (T) edge[bend left] node[above] {\footnotesize RAISE} (S);
-    \path (S) edge[bend left] node[above] {\footnotesize RAISE} (V);
-    \path (V) edge[bend left] node[above] {\footnotesize RAISE} (D);
-
-    % Fold edges going down
-    \path (T) edge[bend left=50] node[below] {\footnotesize FOLD $\to$ 1pt} (N);
-    \path (S) edge[bend left=40] node[below] {\footnotesize FOLD $\to$ 3pt} (N);
-    \path (V) edge[bend left=35] node[below] {\footnotesize FOLD $\to$ 6pt} (N);
-    \path (D) edge[bend left=30] node[below] {\footnotesize FOLD $\to$ 9pt} (N);
-\end{tikzpicture}
-\caption{Escalation FSM. Nodes show points at stake. ACCEPT transitions maintain the current level. FOLD awards the previous level's points to the caller.}
-\label{fig:escalation-fsm}
-\end{figure}
+The escalation mechanic is modeled as a finite state machine where nodes represent points at stake. Players can only escalate if they did not make the last call. Folding awards the previous level's points to the caller.
 
 \subsection{Comparison with Poker}
 
 \begin{table}[h]
 \centering
-\caption{Structural comparison of Truco Paulista and Texas Hold'em.}
+\caption{Structural comparison of Truco Variants and Texas Hold'em.}
 \label{tab:truco-vs-poker}
-\begin{tabular}{lcc}
+\begin{tabular}{lccc}
 \toprule
-\textbf{Property} & \textbf{Truco Paulista} & \textbf{Texas Hold'em} \\
+\textbf{Property} & \textbf{Truco Paulista} & \textbf{Truco Mineiro} & \textbf{Texas Hold'em} \\
 \midrule
-Deck size & 40 & 52 \\
-Hand size & 3 & 2 (+5 community) \\
-Rounds per game & Variable ($\sim$8--15) & 1 \\
-Bluff mechanic & Discrete escalation & Continuous betting \\
-Escalation levels & 5 (1/3/6/9/12) & Unlimited raises \\
-Information revealed & Played cards & Staged community cards \\
-Trump/wild cards & Manilhas (vira-dependent) & None \\
-Game length (points) & First to 12 & Chip-based \\
+Deck size & 40 & 40 & 52 \\
+Hand size & 3 & 3 & 2 (+5 comm.) \\
+Trump system & Variable (Vira) & Fixed & None \\
+Base stake & 1 & 2 & Small/Big Blind \\
+Escalation & 1/3/6/9/12 & 2/4/8/10/12 & Continuous betting \\
+Game length & 12 points & 12 points & Chip-based \\
 \bottomrule
 \end{tabular}
 \end{table}

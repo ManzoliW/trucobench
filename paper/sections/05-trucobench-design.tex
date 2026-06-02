@@ -15,12 +15,13 @@ The engine has zero external dependencies and supports seeded random number gene
 
 \subsection{Prompt Format}
 
-Each LLM receives a text prompt serializing the current game observation. We design three prompt variants for sensitivity analysis:
+Each LLM receives a text prompt serializing the current game observation. We design four prompt variants for sensitivity analysis:
 
 \begin{itemize}
     \item \textbf{Minimal:} Raw game state facts only (hand, vira, score, legal actions).
-    \item \textbf{Standard:} Structured sections with labeled manilhas, trick history, escalation state, and explicit JSON response format.
+    \item \textbf{Standard:} Structured sections with labeled manilhas, trick history, and escalation state.
     \item \textbf{Verbose:} Standard prompt augmented with a full rules summary and strategic hints.
+    \item \textbf{LLMWiki:} An information-dense Markdown format that includes a dynamic \textit{Strength Table} (sorting all possible cards from strongest to weakest based on the current trump state) and explicit tactical guidelines. This variant acts as a ``cheat sheet,'' reducing the model's cognitive load for rank calculation.
 \end{itemize}
 
 All prompts are available in English and Portuguese for language bias analysis.
@@ -34,6 +35,7 @@ Models must respond in a structured JSON format:
 }
 \end{verbatim}
 
+The reasoning field is mandatory and encouraged to follow a structured protocol (Analysis, Opponent Evaluation, Risk, and Decision).
 \subsection{Parse Protocol}
 
 We implement a 3-retry parse protocol:

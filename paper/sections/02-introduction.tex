@@ -2,19 +2,19 @@
 
 Large language models have demonstrated remarkable capabilities across a wide range of tasks, from natural language understanding to code generation. A growing body of work evaluates LLMs on strategic games---particularly poker---as a testbed for reasoning under uncertainty, opponent modeling, and deception \citep{zhuang2025pokerbench,maugin2025spingpt}. However, the focus on poker leaves a gap: many culturally significant card games with distinct strategic properties remain unexplored as LLM benchmarks.
 
-\textbf{Truco Paulista} is one of the most popular card games in Brazil and across Latin America, played by millions. While it shares imperfect information with poker, it introduces a fundamentally different strategic axis: a \emph{nested escalation mechanic} where players can repeatedly raise the stakes of each round through a chain of truco $\to$ seis $\to$ nove $\to$ doze calls. Each escalation forces the opponent into a three-way decision---accept, counter-raise, or fold---creating a rich space for bluffing, meta-reasoning, and risk assessment that is structurally distinct from poker's betting rounds.
+\textbf{Truco} is one of the most popular card games in Brazil and across Latin America, played by millions. While it shares imperfect information with poker, it introduces a fundamentally different strategic axis: a \emph{nested escalation mechanic} where players can repeatedly raise the stakes of each round through a chain of calls (e.g., truco $\to$ seis $\to$ nove $\to$ doze). Each escalation forces the opponent into a three-way decision---accept, counter-raise, or fold---creating a rich space for bluffing, meta-reasoning, and risk assessment that is structurally distinct from poker's betting rounds. We support both the \textbf{Paulista} (variable manilhas) and \textbf{Mineiro} (fixed manilhas) variants, representing the two most common rule sets in Brazil.
 
-We argue that Truco Paulista offers a complementary evaluation axis to existing game benchmarks:
+We argue that Truco offers a complementary evaluation axis to existing game benchmarks:
 \begin{itemize}
     \item \textbf{Escalation as nested bluffing.} Unlike poker's continuous bet sizing, Truco's discrete escalation chain creates clear decision points where models must reason about commitment, credibility, and counter-escalation.
     \item \textbf{Compact state space.} With only 3 cards per hand and up to 3 tricks per round, Truco has a smaller state space than poker, making it more tractable for analysis while retaining strategic depth.
-    \item \textbf{Cultural diversity in AI evaluation.} Benchmarking LLMs on games from diverse cultures helps identify potential biases in strategic reasoning and expands the scope of game-theoretic evaluation.
+    \item \textbf{LLMWiki Prompting.} We introduce a specialized prompting format that addresses LLM reasoning failures by providing explicit, dynamic "cheat sheets" of card strengths, isolating strategic decision-making from basic rank calculation.
 \end{itemize}
 
 \paragraph{Contributions.} We make the following contributions:
 \begin{enumerate}
-    \item \textbf{TrucoBench}: An open-source benchmark framework for evaluating LLMs on Truco Paulista, including a complete game engine, prompt serialization, and automated tournament infrastructure.
-    \item \textbf{Formal POSG model}: A formalization of Truco Paulista as a Partially Observable Stochastic Game, including the escalation state machine.
-    \item \textbf{Evaluation of 8 LLMs}: A comprehensive evaluation across frontier (Claude, GPT-4o, Gemini) and open-source (Llama, Qwen) models, with metrics spanning win rate, ELO, bluff analysis, and reasoning quality.
+    \item \textbf{TrucoBench}: An open-source benchmark framework for evaluating LLMs on Truco, including a complete game engine for both Paulista and Mineiro variants, and automated tournament infrastructure.
+    \item \textbf{Formal POSG model}: A formalization of Truco as a Partially Observable Stochastic Game across multiple regional rule sets.
+    \item \textbf{LLMWiki Prompting}: A novel prompting strategy that utilizes information-dense Markdown and dynamic strength tables to enhance LLM performance in trick-taking games.
     \item \textbf{Reasoning trace analysis}: A classification of chain-of-thought reasoning patterns and identification of the ``knowing-doing gap''---cases where models reason correctly but act incorrectly.
 \end{enumerate}
