@@ -57,8 +57,8 @@ export class AiSdkProvider implements LLMProvider {
 				break;
 			case "vercel-gateway":
 				this.provider = createOpenAI({
-					apiKey: apiKey ?? process.env.VERCEL_AI_GATEWAY_API_KEY,
-					baseURL: process.env.VERCEL_AI_GATEWAY_URL ?? "https://ai-gateway.vercel.sh/v1",
+					apiKey: apiKey ?? process.env.VERCEL_AI_GATEWAY_TOKEN ?? process.env.VERCEL_AI_GATEWAY_API_KEY,
+					baseURL: process.env.VERCEL_AI_GATEWAY_BASE ?? process.env.VERCEL_AI_GATEWAY_URL ?? "https://ai-gateway.vercel.sh/v1",
 				});
 				break;
 			case "huggingface":

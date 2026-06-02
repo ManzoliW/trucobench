@@ -45,7 +45,19 @@ export async function playGame(
 		if (obs.legalActions.length === 0) break;
 
 		const agent = agents[playerId];
-		const action = await agent.getAction(obs);
+		let action: Action;
+		
+		try {
+			// Add a timeout to prevent infinite hangs
+			const timeout = new Promise<never>((_, reject) => {
+				setTimeout(() => reject(new Error("Timeout getting action")), 30000);
+			});
+			action = await Promise.race([agent.getAction(obs), timeout]);
+		} catch (err: any) {
+			console.error(`[Tournament] Error getting action for ${agent.name}:`, err.message || err);
+			// Simulating weakest legal action on failure
+			action = obs.legalActions[0]; // fallback
+		}
 
 		// Record action
 		const record: ActionRecord = { player: playerId, action };

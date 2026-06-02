@@ -1,5 +1,5 @@
 import { compareCards } from "./deck.ts";
-import type { Card, PlayerId, TrickResult } from "./types.ts";
+import type { Card, PlayerId, TrickResult, TrucoVariant } from "./types.ts";
 
 /**
  * Resolve a single trick: two cards played, return winner or null (draw).
@@ -9,8 +9,9 @@ export function resolveTrick(
 	firstCard: Card,
 	secondCard: Card,
 	vira: Card,
+	variant: TrucoVariant = "PAULISTA",
 ): TrickResult {
-	const cmp = compareCards(firstCard, secondCard, vira);
+	const cmp = compareCards(firstCard, secondCard, vira, variant);
 	let winner: PlayerId | null;
 	if (cmp > 0) {
 		winner = firstPlayer;

@@ -3,7 +3,7 @@ import { Game } from "@trucobench/engine";
 import { serializePrompt } from "../src/prompt.ts";
 
 function makeObservation(seed = 42) {
-	const game = new Game(seed);
+	const game = new Game({ seed });
 	game.reset();
 	const player = game.getCurrentPlayer()!;
 	return game.observe(player);
@@ -23,21 +23,20 @@ describe("serializePrompt", () => {
 	test("standard prompt has sections", () => {
 		const obs = makeObservation();
 		const prompt = serializePrompt(obs, { variant: "standard", language: "en" });
-		expect(prompt).toContain("## Your hand");
-		expect(prompt).toContain("## Vira");
-		expect(prompt).toContain("## Manilhas");
-		expect(prompt).toContain("## Score");
-		expect(prompt).toContain("## Legal actions");
-		expect(prompt).toContain("Respond in JSON:");
+		expect(prompt).toContain("## 1. YOUR HAND");
+		expect(prompt).toContain("## 0. STATE SUMMARY");
+		expect(prompt).toContain("## 2. CARD STRENGTH TABLE");
+		expect(prompt).toContain("## 5. LEGAL ACTIONS");
+		expect(prompt).toContain("JSON FORMAT:");
 		expect(prompt).toContain("Zap");
 	});
 
 	test("verbose prompt includes rules", () => {
 		const obs = makeObservation();
 		const prompt = serializePrompt(obs, { variant: "verbose", language: "en" });
-		expect(prompt).toContain("Truco Paulista Rules");
-		expect(prompt).toContain("Advanced strategy hints");
-		expect(prompt).toContain("## Your hand");
+		expect(prompt).toContain("Truco Paulista: Variable Manilhas");
+		expect(prompt).toContain("## 6. TACTICAL WIKI");
+		expect(prompt).toContain("## 1. YOUR HAND");
 	});
 
 	test("Portuguese minimal prompt", () => {
@@ -50,26 +49,25 @@ describe("serializePrompt", () => {
 	test("Portuguese standard prompt", () => {
 		const obs = makeObservation();
 		const prompt = serializePrompt(obs, { variant: "standard", language: "pt" });
-		expect(prompt).toContain("## Sua mao");
-		expect(prompt).toContain("## Placar");
-		expect(prompt).toContain("## Acoes legais");
-		expect(prompt).toContain("Responda em JSON:");
+		expect(prompt).toContain("## 1. YOUR HAND");
+		expect(prompt).toContain("## 0. STATE SUMMARY");
+		expect(prompt).toContain("## 5. LEGAL ACTIONS");
 	});
 
 	test("Portuguese verbose prompt includes rules", () => {
 		const obs = makeObservation();
 		const prompt = serializePrompt(obs, { variant: "verbose", language: "pt" });
-		expect(prompt).toContain("Regras do Truco Paulista");
-		expect(prompt).toContain("Dicas de estrategia");
+		expect(prompt).toContain("Truco Paulista: Manilhas mudam");
+		expect(prompt).toContain("## 6. TACTICAL WIKI");
 	});
 
 	test("standard prompt lists all 3 hand cards", () => {
 		const obs = makeObservation();
 		const prompt = serializePrompt(obs, { variant: "standard", language: "en" });
-		// Should have card indices 0, 1, 2
-		expect(prompt).toContain("- 0:");
-		expect(prompt).toContain("- 1:");
-		expect(prompt).toContain("- 2:");
+		// Should have action IDs 0, 1, 2
+		expect(prompt).toContain("[Action ID 0]");
+		expect(prompt).toContain("[Action ID 1]");
+		expect(prompt).toContain("[Action ID 2]");
 	});
 
 	test("prompt does not contain opponent hand info", () => {
@@ -80,15 +78,11 @@ describe("serializePrompt", () => {
 		const prompt = serializePrompt(obs, { variant: "standard", language: "en" });
 
 		// Make sure the opponent's specific cards aren't mentioned
-		// (unless they happen to be the same as ours or the vira)
 		for (const card of opponentHand) {
 			const isOurs = obs.hand.some((c) => c.rank === card.rank && c.suit === card.suit);
 			const isVira = obs.vira.rank === card.rank && obs.vira.suit === card.suit;
 			if (!isOurs && !isVira) {
-				// The opponent's card shouldn't appear in the prompt with its full suit name
-				const fullLabel = `${card.rank} of`;
-				// This is a weaker check — we just make sure it's not suspiciously present
-				// beyond what's shown in manilha listing (which shows all 4 suits of manilha rank)
+				// This is a weak check, but okay for smoke testing
 			}
 		}
 	});
@@ -101,7 +95,7 @@ describe("serializePrompt", () => {
 		game.startNewRound();
 		const obs = game.observe(0);
 		const prompt = serializePrompt(obs, { variant: "standard", language: "en" });
-		expect(prompt).toContain("Mao de Onze");
+		expect(prompt).toContain("MAO DE ONZE");
 	});
 
 	test("mão de ferro shows in standard prompt", () => {
@@ -112,6 +106,6 @@ describe("serializePrompt", () => {
 		game.startNewRound();
 		const obs = game.observe(0);
 		const prompt = serializePrompt(obs, { variant: "standard", language: "en" });
-		expect(prompt).toContain("Mao de Ferro");
+		expect(prompt).toContain("MAO DE FERRO");
 	});
 });

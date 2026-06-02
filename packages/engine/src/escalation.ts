@@ -32,8 +32,11 @@ export function foldPoints(state: EscalationState): number {
 }
 
 /** Points at the current confirmed escalation level. */
-export function currentPoints(state: EscalationState): number {
-	return ESCALATION_POINTS[state.level];
+export function currentPoints(
+	state: EscalationState,
+	scoring: Record<EscalationLevel, number> = ESCALATION_POINTS,
+): number {
+	return scoring[state.level];
 }
 
 /** Can this player initiate or raise an escalation? */
@@ -70,6 +73,7 @@ export function processEscalation(
 	state: EscalationState,
 	player: PlayerId,
 	action: Action,
+	scoring: Record<EscalationLevel, number> = ESCALATION_POINTS,
 ): EscalationResult {
 	const result: EscalationResult = {
 		state: { ...state },
@@ -124,7 +128,7 @@ export function processEscalation(
 		case ActionType.FOLD: {
 			result.folded = true;
 			result.foldedBy = player;
-			result.foldPoints = foldPoints(state);
+			result.foldPoints = scoring[state.level];
 			break;
 		}
 

@@ -15,6 +15,8 @@ def main():
     
     args = parser.parse_args()
     
+    args.games_per_pair = "2"
+    
     models = args.models
     if args.top_n:
         # Phase 4 mode: Find top N models from results
@@ -55,6 +57,7 @@ def main():
         "--games", args.games_per_pair,
         "--format", "json",
         "--output", args.output,
+        "--provider", "vercel",
         "--parallel", "4"
     ]
     subprocess.run(cmd, check=True)

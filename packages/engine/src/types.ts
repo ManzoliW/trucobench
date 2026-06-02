@@ -1,3 +1,9 @@
+export const TrucoVariant = {
+	PAULISTA: "PAULISTA",
+	MINEIRO: "MINEIRO",
+} as const;
+export type TrucoVariant = (typeof TrucoVariant)[keyof typeof TrucoVariant];
+
 export const Suits = ["ouros", "espadas", "copas", "paus"] as const;
 export type Suit = (typeof Suits)[number];
 
@@ -54,6 +60,14 @@ export const ESCALATION_POINTS: Record<EscalationLevel, number> = {
 	DOZE: 12,
 };
 
+export const ESCALATION_POINTS_MINEIRO: Record<EscalationLevel, number> = {
+	NORMAL: 2,
+	TRUCO: 4,
+	SEIS: 8,
+	NOVE: 10,
+	DOZE: 12,
+};
+
 export const ESCALATION_ORDER: EscalationLevel[] = [
 	EscalationLevel.NORMAL,
 	EscalationLevel.TRUCO,
@@ -101,6 +115,7 @@ export interface RoundState {
 }
 
 export interface GameState {
+	variant: TrucoVariant;
 	scores: [number, number];
 	currentRound: RoundState | null;
 	roundNumber: number;
@@ -109,6 +124,7 @@ export interface GameState {
 }
 
 export interface Observation {
+	variant: TrucoVariant;
 	hand: Card[];
 	vira: Card;
 	score: [number, number];

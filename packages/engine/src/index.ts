@@ -41,7 +41,9 @@ export {
 	ActionType,
 	EscalationLevel,
 	ESCALATION_POINTS,
+	ESCALATION_POINTS_MINEIRO,
 	ESCALATION_ORDER,
+	TrucoVariant,
 } from "./types.ts";
 export type {
 	Suit,
@@ -55,6 +57,7 @@ export type {
 	RoundResult,
 	EscalationState,
 	TrucoTiming,
+	TrucoVariant as TrucoVariantType,
 	RoundState,
 	GameState,
 	Observation,

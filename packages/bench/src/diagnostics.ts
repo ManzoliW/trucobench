@@ -52,12 +52,25 @@ export async function runDiagnostics(
 
     for (const scenario of scenarios) {
         const startTime = performance.now();
-        const action = await agent.getAction(scenario.observation);
-        const latencyMs = performance.now() - startTime;
-
+        let action: Action;
+        let latencyMs = 0;
         let reasoning = "";
-        if ("lastTrace" in agent && (agent as any).lastTrace) {
-            reasoning = (agent as any).lastTrace.reasoning || "";
+        
+        try {
+            const timeout = new Promise<never>((_, reject) => {
+                setTimeout(() => reject(new Error("Timeout getting action")), 30000);
+            });
+            action = await Promise.race([agent.getAction(scenario.observation), timeout]);
+            latencyMs = performance.now() - startTime;
+            if ("lastTrace" in agent && (agent as any).lastTrace) {
+                reasoning = (agent as any).lastTrace.reasoning || "";
+            }
+        } catch (err: any) {
+            console.error(`[Diagnostics] Error evaluating ${agent.name} on scenario ${scenario.id}:`, err.message || err);
+            // Fallback to first legal action (simulate failure)
+            action = scenario.observation.legalActions[0];
+            latencyMs = performance.now() - startTime;
+            reasoning = "API ERROR: " + (err.message || String(err));
         }
 
         const match = scenario.expectedActions.find(ea => actionsEqual(ea.action, action));

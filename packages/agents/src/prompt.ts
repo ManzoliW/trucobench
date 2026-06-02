@@ -1,17 +1,18 @@
 import {
 	type Card,
 	ESCALATION_POINTS,
+	ESCALATION_POINTS_MINEIRO,
 	type EscalationState,
 	type Observation,
+	Ranks,
 	Suits,
-	type TrickResult,
-	cardStrength,
 	cardToString,
 	getManilhaRank,
 	isManilha,
+	cardStrength,
 } from "@trucobench/engine";
 
-export type PromptVariant = "economy" | "minimal" | "standard" | "verbose";
+export type PromptVariant = "economy" | "minimal" | "standard" | "verbose" | "wiki";
 export type PromptLanguage = "en" | "pt";
 
 export interface PromptOptions {
@@ -37,10 +38,12 @@ function suitName(suit: string, lang: PromptLanguage): string {
 	return lang === "pt" ? (SUIT_NAMES_PT[suit] ?? suit) : (SUIT_NAMES_EN[suit] ?? suit);
 }
 
-function cardLabel(card: Card, vira: Card, lang: PromptLanguage): string {
+function cardLabel(card: Card, vira: Card, lang: PromptLanguage, variant: string = "PAULISTA"): string {
 	const base = `${card.rank} of ${suitName(card.suit, lang)}`;
-	if (isManilha(card, vira)) {
-		const manilhaLabel = card.suit === "paus" ? "Zap" : "manilha";
+	if (isManilha(card, vira, variant as any)) {
+		let manilhaLabel = lang === "pt" ? "manilha" : "manilha";
+		if (card.rank === "4" && card.suit === "paus") manilhaLabel = "Zap";
+		else if (card.rank === "7" && card.suit === "copas" && variant === "MINEIRO") manilhaLabel = "Sete de Copas";
 		return `${base} (${manilhaLabel})`;
 	}
 	return base;
@@ -67,17 +70,18 @@ function formatTrick(trick: TrickResult, playerId: number, lang: PromptLanguage)
 	return `${first} played ${firstCard}, ${second} played ${secondCard} → ${result}`;
 }
 
-function formatEscalation(esc: EscalationState, playerId: number, lang: PromptLanguage): string {
-	const points = ESCALATION_POINTS[esc.level];
+function formatEscalation(esc: EscalationState, playerId: number, lang: PromptLanguage, variant: string = "PAULISTA"): string {
+	const scoring = variant === "PAULISTA" ? ESCALATION_POINTS : ESCALATION_POINTS_MINEIRO;
+	const points = scoring[esc.level];
 	if (esc.level === "NORMAL" && esc.pendingRequest === null) {
-		return lang === "pt" ? `Aposta atual: ${points} ponto` : `Current stake: ${points} point`;
+		return lang === "pt" ? `Aposta atual: ${points} pontos` : `Current stake: ${points} points`;
 	}
 
 	const levelLabel = esc.level;
 	const lines: string[] = [];
 
 	if (esc.pendingRequest) {
-		const pendingPoints = ESCALATION_POINTS[esc.pendingRequest];
+		const pendingPoints = scoring[esc.pendingRequest];
 		const caller =
 			esc.requestedBy === playerId
 				? lang === "pt"
@@ -108,7 +112,7 @@ function formatLegalActions(obs: Observation, lang: PromptLanguage): string {
 		const a = obs.legalActions[i]!;
 		if (a.type === "PLAY_CARD") {
 			const card = obs.hand[a.cardIndex]!;
-			const label = cardLabel(card, obs.vira, lang);
+			const label = cardLabel(card, obs.vira, lang, obs.variant);
 			lines.push(`${i + 1}. PLAY_CARD ${a.cardIndex} (${label})`);
 		} else {
 			lines.push(`${i + 1}. ${a.type}`);
@@ -181,11 +185,6 @@ function formatSignals(obs: Observation, lang: PromptLanguage): string | null {
 	return lines.join("\n");
 }
 
-/**
- * Economy prompt — absolute minimum tokens. ~60-80 tokens per turn.
- * No manilha listing, no strategy, no chat, no signals.
- * Just: hand, vira, score, tricks, escalation, actions, format.
- */
 function buildEconomyPrompt(obs: Observation, _lang: PromptLanguage): string {
 	const hand = obs.hand.map((c) => `${c.rank}${c.suit[0]}`).join(",");
 	const vira = `${obs.vira.rank}${obs.vira.suit[0]}`;
@@ -227,7 +226,7 @@ function buildEconomyPrompt(obs: Observation, _lang: PromptLanguage): string {
 function buildMinimalPrompt(obs: Observation, lang: PromptLanguage): string {
 	const you = lang === "pt" ? "Voce" : "You";
 	const opp = lang === "pt" ? "Oponente" : "Opponent";
-	const handStr = obs.hand.map((c) => cardLabel(c, obs.vira, lang)).join(", ");
+	const handStr = obs.hand.map((c) => cardLabel(c, obs.vira, lang, obs.variant)).join(", ");
 	const viraStr = `${obs.vira.rank} ${obs.vira.suit}`;
 	const trickStr = obs.tricks
 		.map((t, i) => `T${i + 1}: ${formatTrick(t, obs.playerId, lang)}`)
@@ -236,7 +235,6 @@ function buildMinimalPrompt(obs: Observation, lang: PromptLanguage): string {
 		? `Opp played: ${cardToString(obs.currentTrick.firstCard)}`
 		: "";
 
-	// Compact signal info for minimal prompt
 	const signalParts: string[] = [];
 	if (obs.partnerSignals?.length) {
 		signalParts.push(`Partner: ${obs.partnerSignals.map((s) => s.type).join(", ")}`);
@@ -252,238 +250,169 @@ function buildMinimalPrompt(obs: Observation, lang: PromptLanguage): string {
 		trickStr ? `Tricks: ${trickStr}` : null,
 		pending || null,
 		signalParts.length > 0 ? `Signals: ${signalParts.join("; ")}` : null,
-		formatEscalation(obs.escalation, obs.playerId, lang),
+		formatEscalation(obs.escalation, obs.playerId, lang, obs.variant),
 		`Actions:\n${formatLegalActions(obs, lang)}`,
 	];
 
 	return lines.filter(Boolean).join("\n");
 }
 
-function buildStandardPrompt(obs: Observation, lang: PromptLanguage): string {
-	const you = lang === "pt" ? "Voce" : "You";
-	const opp = lang === "pt" ? "Oponente" : "Opponent";
+/**
+ * Builds a "Cheat Sheet" strength table for all possible cards.
+ * Returns a list of strings sorted from strongest to weakest.
+ */
+function buildStrengthTable(obs: Observation, lang: PromptLanguage): string[] {
+	const allCards: Card[] = [];
+	for (const suit of Suits) {
+		for (const rank of Ranks) {
+			allCards.push({ suit, rank });
+		}
+	}
+
+	// Sort by strength
+	allCards.sort((a, b) => cardStrength(b, obs.vira, obs.variant) - cardStrength(a, obs.vira, obs.variant));
+
+	// Group by strength value to show ties
+	const table: string[] = [];
+	let currentStrength = -1;
+	let currentGroup: string[] = [];
+
+	for (const card of allCards) {
+		const s = cardStrength(card, obs.vira, obs.variant);
+		const label = cardToString(card);
+		const isM = isManilha(card, obs.vira, obs.variant);
+		const suffix = isM ? (card.suit === "paus" ? " (Zap)" : " (Manilha)") : "";
+
+		if (s !== currentStrength) {
+			if (currentGroup.length > 0) {
+				table.push(currentGroup.join(", "));
+			}
+			currentStrength = s;
+			currentGroup = [`${label}${suffix}`];
+		} else {
+			currentGroup.push(`${label}${suffix}`);
+		}
+	}
+	if (currentGroup.length > 0) {
+		table.push(currentGroup.join(", "));
+	}
+
+	return table;
+}
+
+function buildWikiPrompt(obs: Observation, lang: PromptLanguage): string {
+	const you = lang === "pt" ? "VOCE" : "YOU";
+	const opp = lang === "pt" ? "OPONENTE" : "OPPONENT";
 	const oppIdx = obs.playerId === 0 ? 1 : 0;
+	const variantName = obs.variant === "PAULISTA" ? "TRUCO PAULISTA" : "TRUCO MINEIRO";
 
-	const sections: string[] = [];
+	const strengthTable = buildStrengthTable(obs, lang);
+	const tableLines = strengthTable.map((line, i) => `${i + 1}. ${line}`);
 
-	// Header
-	sections.push(
-		lang === "pt" ? "Voce esta jogando Truco Paulista." : "You are playing Truco Paulista.",
-	);
+	const strategy = [
+		"- BLUFFING: High-value when leading (won trick 1) or in response to opponent weakness.",
+		"- TIES: Winner of next trick wins the round if current trick is a draw.",
+		"- MINEIRO: Manilhas are fixed (4Paus > 7Copas > AEspadas > 7Ouros) regardless of Vira.",
+	];
 
-	// Hand
-	const handLines = obs.hand.map((c, i) => `- ${i}: ${cardLabel(c, obs.vira, lang)}`);
-	sections.push(
-		lang === "pt" ? `## Sua mao\n${handLines.join("\n")}` : `## Your hand\n${handLines.join("\n")}`,
-	);
-
-	// Vira
-	sections.push(`## Vira\n${cardLabel(obs.vira, obs.vira, lang)}`);
-
-	// Manilhas
-	const manilhaRank = getManilhaRank(obs.vira);
-	const manilhaSuits = [...Suits].reverse(); // paus first (strongest)
-	const manilhaLines = manilhaSuits.map(
-		(s, i) =>
-			`${i + 1}. ${manilhaRank} of ${suitName(s, lang)}${i === 0 ? " (Zap)" : ""}${i === 3 ? (lang === "pt" ? " (mais fraca)" : " (weakest)") : ""}`,
-	);
-	sections.push(
-		lang === "pt"
-			? `## Manilhas (mais forte para mais fraca)\n${manilhaLines.join("\n")}`
-			: `## Manilhas (strongest to weakest)\n${manilhaLines.join("\n")}`,
-	);
-
-	// Score
-	sections.push(
-		lang === "pt"
-			? `## Placar\n${you}: ${obs.score[obs.playerId]} | ${opp}: ${obs.score[oppIdx]}`
-			: `## Score\n${you}: ${obs.score[obs.playerId]} | ${opp}: ${obs.score[oppIdx]}`,
-	);
-
-	// Mão de onze / ferro
-	if (obs.maoDeOnze) {
-		sections.push(
-			lang === "pt"
-				? "## Mao de Onze\nVoce tem 11 pontos. Decida se quer jogar (ACCEPT) ou fugir (FOLD). Se jogar, a rodada vale 3 pontos."
-				: "## Mao de Onze\nYou have 11 points. Decide whether to play (ACCEPT) or fold (FOLD). If you play, the round is worth 3 points.",
-		);
-	}
-	if (obs.maoDeferro) {
-		sections.push(
-			lang === "pt"
-				? "## Mao de Ferro\nAmbos os times tem 11 pontos. A rodada vale 3 pontos. Sem truco."
-				: "## Mao de Ferro\nBoth teams have 11 points. Round is worth 3 points. No escalation allowed.",
-		);
-	}
-
-	// Current round
-	const trickNum = obs.tricks.length + 1;
-	const roundLines: string[] = [];
+	const historyLines: string[] = [];
 	for (let i = 0; i < obs.tricks.length; i++) {
-		roundLines.push(`- Trick ${i + 1}: ${formatTrick(obs.tricks[i]!, obs.playerId, lang)}`);
+		historyLines.push(`Trick ${i + 1}: ${formatTrick(obs.tricks[i]!, obs.playerId, lang)}`);
 	}
 	if (obs.currentTrick.firstCard) {
-		const who =
-			obs.currentTrick.firstPlayer === obs.playerId
-				? lang === "pt"
-					? you
-					: you
-				: lang === "pt"
-					? opp
-					: opp;
-		roundLines.push(
-			`- Trick ${trickNum}: ${who} plays ${cardToString(obs.currentTrick.firstCard)}. Your turn.`,
-		);
-	}
-	if (roundLines.length > 0) {
-		sections.push(
-			lang === "pt"
-				? `## Rodada atual (trick ${trickNum} de 3)\n${roundLines.join("\n")}`
-				: `## Current round (trick ${trickNum} of 3)\n${roundLines.join("\n")}`,
-		);
+		const who = obs.currentTrick.firstPlayer === obs.playerId ? you : opp;
+		historyLines.push(`Trick ${obs.tricks.length + 1}: ${who} played ${cardToString(obs.currentTrick.firstCard)}. YOUR TURN.`);
+	} else {
+		historyLines.push(`Trick ${obs.tricks.length + 1}: You lead the trick.`);
 	}
 
-	// Escalation
-	sections.push(`## Escalation\n${formatEscalation(obs.escalation, obs.playerId, lang)}`);
+	return `<CONTEXT>
+Variant: ${variantName}
+Score: ${you} ${obs.score[obs.playerId]} | ${opp} ${obs.score[oppIdx]}
+Current Stake: ${formatEscalation(obs.escalation, obs.playerId, lang, obs.variant)}
+Vira: ${cardToString(obs.vira)} (${cardLabel(obs.vira, obs.vira, lang, obs.variant)})
+Round Progress: Trick ${obs.tricks.length + 1} of 3
+</CONTEXT>
 
-	// Signals (4P mode only — partner communication)
-	const signalSection = formatSignals(obs, lang);
-	if (signalSection) sections.push(signalSection);
+<REFERENCE>
+## Card Strength (Strongest to Weakest)
+${tableLines.join("\n")}
 
-	// Legal actions
-	sections.push(
-		lang === "pt"
-			? `## Acoes legais\n${formatLegalActions(obs, lang)}`
-			: `## Legal actions\n${formatLegalActions(obs, lang)}`,
-	);
+## Strategic Wiki
+${strategy.join("\n")}
+</REFERENCE>
 
-	// Strategy guidance
-	sections.push(
-		lang === "pt"
-			? [
-					"## Estrategia",
-					"- Truco com mao fraca (blefe) e uma jogada valida — pode roubar pontos se o oponente fugir.",
-					"- Quando o oponente pedir truco, avalie: ele realmente tem mao forte ou esta blefando?",
-					"- Se voce venceu a 1a rodada, o oponente nao sabe sua forca real — bom momento para blefar.",
-					"- Se o oponente esta perdendo no placar, e mais provavel que ele esteja blefando.",
-					"- Fugir nao e fraqueza — preserva pontos. Mas fugir sempre convida mais blefes.",
-				].join("\n")
-			: [
-					"## Strategy",
-					"- Calling truco on a weak hand (bluffing) is a valid play — it can steal points if the opponent folds.",
-					"- When your opponent calls truco, evaluate: do they really have a strong hand, or are they bluffing?",
-					"- If you won the 1st trick, the opponent doesn't know your true strength — good time to bluff.",
-					"- If the opponent is losing on score, they are more likely to be bluffing.",
-					"- Folding is not weakness — it preserves points. But always folding invites more bluffs.",
-				].join("\n"),
-	);
+<STATE>
+## Your Hand
+${obs.hand.map((c, i) => `[ID ${i}] ${cardToString(c)} (${cardLabel(c, obs.vira, lang, obs.variant)}) | Power: ${cardStrength(c, obs.vira, obs.variant)}`).join("\n")}
 
-	// Chat history (if any messages exist in observation)
-	if (obs.chatHistory && obs.chatHistory.length > 0) {
-		const chatLines = obs.chatHistory.map((m) => `- ${m.name}: "${m.text}"`);
-		sections.push(
-			lang === "pt"
-				? `## Chat da mesa\n${chatLines.join("\n")}\n(Use o campo "chat" para provocar, blefar verbalmente ou apoiar seu parceiro.)`
-				: `## Table chat\n${chatLines.join("\n")}\n(Use the "chat" field to trash talk, verbally bluff, or support your partner.)`,
-		);
+## Round History
+${historyLines.join("\n")}
+</STATE>
+
+<ACTIONS>
+${formatLegalActions(obs, lang)}
+</ACTIONS>
+
+<PROTOCOL>
+Respond in JSON:
+{
+  "reasoning": "1. ANALYSIS: (Evaluate hand strength) 2. OPPONENT: (Predict opponent based on plays) 3. DECISION: (Final choice)",
+  "action": "PLAY_CARD|TRUCO|ACCEPT|RAISE|FOLD",
+  "card_index": 0
+}
+</PROTOCOL>`;
+}
+
+function buildStandardPrompt(obs: Observation, lang: PromptLanguage): string {
+	const you = lang === "pt" ? "VOCE" : "YOU";
+	const opp = lang === "pt" ? "OPONENTE" : "OPPONENT";
+	const oppIdx = obs.playerId === 0 ? 1 : 0;
+	
+	const sections: string[] = [];
+
+	sections.push(`# TRUCO GAME STATE\nVariant: ${obs.variant}`);
+
+	const summary = [
+		`| Score | ${you}: ${obs.score[obs.playerId]} | ${opp}: ${obs.score[oppIdx]} |`,
+		`| Stake | ${formatEscalation(obs.escalation, obs.playerId, lang, obs.variant)} |`,
+		`| Vira  | ${cardToString(obs.vira)} (${cardLabel(obs.vira, obs.vira, lang, obs.variant)}) |`,
+	];
+	sections.push(`## SCORE AND STAKE\n${summary.join("\n")}`);
+
+	const handLines = obs.hand.map((c, i) => `- ${i}: ${cardToString(c)} (${cardLabel(c, obs.vira, lang, obs.variant)})`);
+	sections.push(`## YOUR HAND\n${handLines.join("\n")}`);
+
+	const historyLines: string[] = [];
+	for (const t of obs.tricks) {
+		historyLines.push(`- ${formatTrick(t, obs.playerId, lang)}`);
 	}
+	if (obs.currentTrick.firstCard) {
+		const who = obs.currentTrick.firstPlayer === obs.playerId ? you : opp;
+		historyLines.push(`- Current trick: ${who} played ${cardToString(obs.currentTrick.firstCard)}`);
+	}
+	sections.push(`## ROUND HISTORY\n${historyLines.length > 0 ? historyLines.join("\n") : "No cards played yet."}`);
 
-	// Response format
-	sections.push(
-		[
-			lang === "pt" ? "Responda em JSON:" : "Respond in JSON:",
-			"{",
-			`  "reasoning": "${lang === "pt" ? "seu raciocinio aqui" : "your chain-of-thought here"}",`,
-			`  "action": "PLAY_CARD|TRUCO|ACCEPT|RAISE|FOLD",`,
-			`  "card_index": 0,`,
-			`  "chat": "${lang === "pt" ? "opcional: provocacao ou zoeira para a mesa" : "optional: trash talk or banter for the table"}"`,
-			"}",
-		].join("\n"),
-	);
+	sections.push(`## LEGAL ACTIONS\n${formatLegalActions(obs, lang)}`);
+
+	sections.push(`## RESPONSE FORMAT
+Respond in JSON:
+{
+  "reasoning": "...",
+  "action": "PLAY_CARD|TRUCO|ACCEPT|RAISE|FOLD",
+  "card_index": 0
+}`);
 
 	return sections.join("\n\n");
 }
 
 function buildVerbosePrompt(obs: Observation, lang: PromptLanguage): string {
-	const rules =
-		lang === "pt"
-			? [
-					"## Regras do Truco Paulista",
-					"- Baralho de 40 cartas (sem 8, 9, 10). Naipes: ouros, espadas, copas, paus.",
-					"- Forca das cartas: 4 < 5 < 6 < 7 < Q < J < K < A < 2 < 3.",
-					"- A carta virada (vira) determina as manilhas: as 4 cartas do proximo rank sao as mais fortes.",
-					"- Ordem dos naipes nas manilhas: ouros < espadas < copas < paus (paus = Zap, mais forte).",
-					"- Melhor de 3 rodadas. Empate na 1a: quem vencer a 2a leva. Empate na 3a: quem venceu a 1a leva.",
-					"- Escalacao: TRUCO(3pts) -> SEIS(6pts) -> NOVE(9pts) -> DOZE(12pts).",
-					"- Ao pedir truco, oponente pode ACEITAR, AUMENTAR ou FUGIR.",
-					"- Jogo vai ate 12 pontos.",
-					"",
-				].join("\n")
-			: [
-					"## Truco Paulista Rules",
-					"- 40-card deck (no 8, 9, 10). Suits: ouros, espadas, copas, paus.",
-					"- Card strength: 4 < 5 < 6 < 7 < Q < J < K < A < 2 < 3.",
-					"- The flipped card (vira) determines manilhas: the 4 cards of the next rank are the strongest.",
-					"- Manilha suit order: ouros < espadas < copas < paus (paus = Zap, strongest).",
-					"- Best of 3 tricks. Trick 1 draw: trick 2 winner takes round. Trick 3 draw: trick 1 winner takes round.",
-					"- Escalation: TRUCO(3pts) -> SEIS(6pts) -> NOVE(9pts) -> DOZE(12pts).",
-					"- On escalation call, opponent can ACCEPT, RAISE, or FOLD.",
-					"- Game ends at 12 points.",
-					"",
-				].join("\n");
+	const header = lang === "pt" ? "## REGRAS COMPLETAS" : "## COMPLETE RULES";
+	const rules = obs.variant === "PAULISTA" ? 
+		(lang === "pt" ? "- Truco Paulista: Manilhas mudam a cada rodada (Vira).\n- Ordem: Vira+1. Naipes: Paus>Copas>Espadas>Ouros." : "- Truco Paulista: Variable Manilhas (Vira).\n- Rank: Vira+1. Suits: Clubs>Hearts>Spades>Diamonds.") :
+		(lang === "pt" ? "- Truco Mineiro: Manilhas FIXAS (4 Paus, 7 Copas, A Espadas, 7 Ouros).\n- Pontos: 2, 4, 8, 10, 12." : "- Truco Mineiro: FIXED Manilhas (4 Clubs, 7 Hearts, A Spades, 7 Diamonds).\n- Points: 2, 4, 8, 10, 12.");
 
-	const strategy =
-		lang === "pt"
-			? [
-					"## Dicas de estrategia avancada",
-					"",
-					"### Blefe",
-					"- Blefar (pedir truco com mao fraca) e fundamental no Truco. Nao jogue apenas com cartas fortes.",
-					"- Melhor momento para blefar: voce venceu a 1a rodada e tem cartas medianas — o oponente teme sua mao.",
-					"- Blefar quando esta perdendo no placar e inteligente: voce precisa de pontos e fugir so atrasa a derrota.",
-					"- NAO blefe quando as apostas ja estao altas (seis/nove) — o custo de ser pego e muito alto.",
-					"- Pedir truco ANTES de jogar sua carta forte cria mais pressao do que depois.",
-					"",
-					"### Deteccao de blefe",
-					"- Quando o oponente pedir truco, pergunte: ele esta perdendo no placar? Se sim, mais chance de blefe.",
-					"- Se o oponente jogou uma carta fraca na 1a rodada e depois pediu truco, provavelmente esta blefando.",
-					"- Se o oponente venceu a 1a rodada com uma carta muito forte e pediu truco, provavelmente tem mao boa de verdade.",
-					"- Se voce tem pelo menos 1 manilha, raramente fuja — sua mao tem chance real.",
-					"- Fugir nao e fraqueza, mas fugir sempre convida mais blefes. Varie suas respostas.",
-					"",
-					"### Gerenciamento de placar",
-					"- Guarde manilhas para rodadas decisivas.",
-					"- Quando esta ganhando, jogue conservador — proteja a lideranca.",
-					"- Quando esta perdendo, blefe mais e aceite mais trucos — voce precisa de pontos.",
-					"- Perto de 11 pontos, considere se vale arriscar uma mao de onze.",
-					"",
-				].join("\n")
-			: [
-					"## Advanced strategy hints",
-					"",
-					"### Bluffing",
-					"- Bluffing (calling truco with a weak hand) is fundamental to Truco. Don't just play strong cards.",
-					"- Best time to bluff: you won the 1st trick with mediocre cards — the opponent fears your hand.",
-					"- Bluffing when behind on score is smart: you need points, and folding only delays defeat.",
-					"- Do NOT bluff when stakes are already high (seis/nove) — the cost of being caught is too high.",
-					"- Calling truco BEFORE playing your strong card creates more pressure than after.",
-					"",
-					"### Bluff detection",
-					"- When your opponent calls truco, ask: are they losing on score? If yes, more likely bluffing.",
-					"- If the opponent played a weak card in trick 1 then called truco, they are probably bluffing.",
-					"- If the opponent won trick 1 with a very strong card and called truco, they likely have a genuinely good hand.",
-					"- If you hold at least 1 manilha, rarely fold — your hand has real potential.",
-					"- Folding is not weakness, but always folding invites more bluffs. Vary your responses.",
-					"",
-					"### Score management",
-					"- Save manilhas for decisive tricks.",
-					"- When ahead, play conservatively — protect your lead.",
-					"- When behind, bluff more and accept more truco calls — you need points.",
-					"- Near 11 points, consider whether risking a mao de onze is worth it.",
-					"",
-				].join("\n");
-
-	return `${rules}\n${strategy}\n${buildStandardPrompt(obs, lang)}`;
+	return `${header}\n${rules}\n\n${buildWikiPrompt(obs, lang)}`;
 }
 
 export function serializePrompt(obs: Observation, options: PromptOptions): string {
@@ -496,5 +425,7 @@ export function serializePrompt(obs: Observation, options: PromptOptions): strin
 			return buildStandardPrompt(obs, options.language);
 		case "verbose":
 			return buildVerbosePrompt(obs, options.language);
+		case "wiki":
+			return buildWikiPrompt(obs, options.language);
 	}
 }

@@ -2,7 +2,7 @@ import { readFile, writeFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
 async function generateDiagnosticTable() {
-    const diagDir = "results/arxiv-v1/diagnostics";
+    const diagDir = "results/arxiv-v2/diagnostics";
     const files = await readdir(diagDir);
     const results: any[] = [];
 
