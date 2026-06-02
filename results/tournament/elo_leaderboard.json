@@ -1,0 +1,42 @@
+[
+  {
+    "model": "qwen-3.7-max",
+    "elo": 1000
+  },
+  {
+    "model": "gemini-2.5-pro",
+    "elo": 1000
+  },
+  {
+    "model": "gpt-4o",
+    "elo": 1000
+  },
+  {
+    "model": "claude-sonnet-4.6",
+    "elo": 1000
+  },
+  {
+    "model": "kimi-k2.5",
+    "elo": 1000
+  },
+  {
+    "model": "vercel-gateway/alibaba/qwen3.7-max",
+    "elo": null
+  },
+  {
+    "model": "vercel-gateway/gemini-2.5-pro",
+    "elo": null
+  },
+  {
+    "model": "vercel-gateway/gpt-4o",
+    "elo": null
+  },
+  {
+    "model": "vercel-gateway/claude-sonnet-4.6",
+    "elo": null
+  },
+  {
+    "model": "vercel-gateway/moonshotai/kimi-k2.5",
+    "elo": null
+  }
+]

@@ -1,0 +1,11 @@
+model,final_elo,cost_per_hand_usd,elo_per_dollar,bluff_success_rate
+qwen-3.7-max,1000.0,0.001,1000000.0,0.5
+gemini-2.5-pro,1000.0,0.001,1000000.0,0.5
+gpt-4o,1000.0,0.001,1000000.0,0.5
+claude-sonnet-4.6,1000.0,0.001,1000000.0,0.5
+kimi-k2.5,1000.0,0.001,1000000.0,0.5
+vercel-gateway/alibaba/qwen3.7-max,NaN,0.001,NaN,0.5
+vercel-gateway/gemini-2.5-pro,NaN,0.001,NaN,0.5
+vercel-gateway/gpt-4o,NaN,0.001,NaN,0.5
+vercel-gateway/claude-sonnet-4.6,NaN,0.001,NaN,0.5
+vercel-gateway/moonshotai/kimi-k2.5,NaN,0.001,NaN,0.5

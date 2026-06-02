@@ -1,0 +1,82 @@
+[
+  {
+    "model": "gemini-2.5-pro",
+    "language": "en",
+    "prompt_format": "standard",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 21871.7938
+  },
+  {
+    "model": "gpt-4o",
+    "language": "en",
+    "prompt_format": "standard",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 2500.066999999999
+  },
+  {
+    "model": "claude-sonnet-4.6",
+    "language": "en",
+    "prompt_format": "standard",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 11919.5095
+  },
+  {
+    "model": "kimi-k2.5",
+    "language": "en",
+    "prompt_format": "standard",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 88590.3287
+  },
+  {
+    "model": "deepseek-r1",
+    "language": "en",
+    "prompt_format": "standard",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 19146.35979999999
+  },
+  {
+    "model": "gemini-2.5-flash",
+    "language": "en",
+    "prompt_format": "standard",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 7825.913299999986
+  },
+  {
+    "model": "gpt-4o-mini",
+    "language": "en",
+    "prompt_format": "standard",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 2351.296100000007
+  },
+  {
+    "model": "claude-haiku-4.5",
+    "language": "en",
+    "prompt_format": "standard",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 3685.7041000000027
+  }
+]

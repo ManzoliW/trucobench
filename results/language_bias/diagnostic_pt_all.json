@@ -1,0 +1,162 @@
+[
+  {
+    "model": "gemini-2.5-pro",
+    "language": "pt",
+    "prompt_format": "llmwiki",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 14350.643199999999
+  },
+  {
+    "model": "gpt-4o",
+    "language": "pt",
+    "prompt_format": "llmwiki",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 2735.1021
+  },
+  {
+    "model": "claude-sonnet-4.6",
+    "language": "pt",
+    "prompt_format": "llmwiki",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 9514.268999999997
+  },
+  {
+    "model": "kimi-k2.5",
+    "language": "pt",
+    "prompt_format": "llmwiki",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 146145.733
+  },
+  {
+    "model": "deepseek-r1",
+    "language": "pt",
+    "prompt_format": "llmwiki",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 16021.431899999996
+  },
+  {
+    "model": "gemini-2.5-flash",
+    "language": "pt",
+    "prompt_format": "llmwiki",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 11348.742499999993
+  },
+  {
+    "model": "gpt-4o-mini",
+    "language": "pt",
+    "prompt_format": "llmwiki",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 2835.03330000001
+  },
+  {
+    "model": "claude-haiku-4.5",
+    "language": "pt",
+    "prompt_format": "llmwiki",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 4159.107400000008
+  },
+  {
+    "model": "gemini-2.5-pro",
+    "language": "pt",
+    "prompt_format": "standard",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 15991.6454
+  },
+  {
+    "model": "gpt-4o",
+    "language": "pt",
+    "prompt_format": "standard",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 2495.817900000002
+  },
+  {
+    "model": "claude-sonnet-4.6",
+    "language": "pt",
+    "prompt_format": "standard",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 14141.6083
+  },
+  {
+    "model": "kimi-k2.5",
+    "language": "pt",
+    "prompt_format": "standard",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 132427.36239999998
+  },
+  {
+    "model": "deepseek-r1",
+    "language": "pt",
+    "prompt_format": "standard",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 10886.127300000022
+  },
+  {
+    "model": "gemini-2.5-flash",
+    "language": "pt",
+    "prompt_format": "standard",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 6851.915399999998
+  },
+  {
+    "model": "gpt-4o-mini",
+    "language": "pt",
+    "prompt_format": "standard",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 2289.62460000001
+  },
+  {
+    "model": "claude-haiku-4.5",
+    "language": "pt",
+    "prompt_format": "standard",
+    "overall_accuracy": 1,
+    "bluff": 1,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 3448.457699999999
+  }
+]

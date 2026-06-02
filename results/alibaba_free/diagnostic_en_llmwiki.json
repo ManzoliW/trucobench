@@ -1,0 +1,22 @@
+[
+  {
+    "model": "qwen-3.7-max",
+    "language": "en",
+    "prompt_format": "llmwiki",
+    "overall_accuracy": 0.7333333333333334,
+    "bluff": 0.7333333333333334,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 24646.2946
+  },
+  {
+    "model": "qwen-3.7-plus",
+    "language": "en",
+    "prompt_format": "llmwiki",
+    "overall_accuracy": 0.6666666666666666,
+    "bluff": 0.6666666666666666,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "latency_p50_ms": 63329.172800000015
+  }
+]
