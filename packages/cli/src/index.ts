@@ -65,7 +65,11 @@ function createAgent(name: string, cfg: AgentConfig): Agent {
 
 	// Gateway modes (Vercel, OpenRouter, HF) use AiSdkProvider
 	if (cfg.mode === "vercel") {
-		return wrap(new AiSdkProvider("vercel-gateway", name));
+		let vercelName = name;
+		if (name === "qwen-3.7-max") vercelName = "alibaba/qwen3.7-max";
+		if (name === "qwen-3.7-plus") vercelName = "alibaba/qwen3.7-plus";
+		if (name === "kimi-k2.5") vercelName = "moonshotai/kimi-k2.5";
+		return wrap(new AiSdkProvider("vercel-gateway", vercelName));
 	}
 	if (cfg.mode === "openrouter") {
 		return wrap(new AiSdkProvider("openrouter", name));
@@ -83,6 +87,9 @@ function createAgent(name: string, cfg: AgentConfig): Agent {
 		"gemini-2.5-pro": () => wrap(new GoogleProvider("gemini-2.5-pro")),
 		"gemini-2.5-flash": () => wrap(new GoogleProvider("gemini-2.5-flash")),
 		"deepseek-r1": () => wrap(new DeepSeekProvider("deepseek-reasoner")),
+		"qwen-3.7-max": () => wrap(new AiSdkProvider("vercel-gateway", "alibaba/qwen3.7-max")),
+		"qwen-3.7-plus": () => wrap(new AiSdkProvider("vercel-gateway", "alibaba/qwen3.7-plus")),
+		"kimi-k2.5": () => wrap(new AiSdkProvider("vercel-gateway", "moonshotai/kimi-k2.5")),
 	};
 
 	const factory = providerMap[name];
@@ -292,40 +299,84 @@ async function evalCommand() {
 		args: process.argv.slice(2),
 		options: {
 			model: { type: "string" },
+			models: { type: "string" },
 			scenarios: { type: "string" },
 			prompt: { type: "string", default: "standard" },
+			prompt_format: { type: "string" },
 			language: { type: "string", default: "en" },
 			temperature: { type: "string", default: "0.7" },
 			provider: { type: "string", default: "native" },
 			output: { type: "string" },
+			runs: { type: "string", default: "1" },
 		},
 		allowPositionals: true,
 	});
 
-	if (!values.model) {
-		console.error("Usage: eval --model <agent> [--provider vercel] [--scenarios <path>]");
+	if (!values.model && !values.models) {
+		console.error("Usage: eval --models <a,b> [--runs 3] [--prompt_format <format>] [--language <lang>] [--output <file>]");
 		process.exit(1);
 	}
 
-	const cfg = parseAgentConfig(values);
-	const agent = createAgent(values.model, cfg);
+	const modelNames = values.models ? values.models.split(",").map(s => s.trim()) : [values.model!];
+	const runs = Number.parseInt(values.runs!, 10);
 	
 	let scenarios = [createExampleScenario()];
 	if (values.scenarios) {
 		scenarios = JSON.parse(await readFile(values.scenarios, "utf-8"));
 	}
 
-	console.log(`Evaluating ${values.model} on ${scenarios.length} scenarios...`);
-	const report = await runDiagnostics(agent, scenarios);
+	const allReports: any[] = [];
+	
+	for (const modelName of modelNames) {
+		console.log(`Evaluating ${modelName} on ${scenarios.length} scenarios (${runs} runs)...`);
+		let totalOverall = 0;
+		const categoryTotals: Record<string, number> = {};
+		let baseReport: any = null;
+		
+		for (let i = 0; i < runs; i++) {
+			const cfg = parseAgentConfig({
+				...values,
+				prompt: values.prompt_format || values.prompt,
+			});
+			const agent = createAgent(modelName, cfg);
+			const report = await runDiagnostics(agent, scenarios);
+			totalOverall += report.overallScore;
+			
+			for (const [cat, score] of Object.entries(report.categoryScores)) {
+				categoryTotals[cat] = (categoryTotals[cat] || 0) + score;
+			}
+			if (i === 0) baseReport = report;
+		}
 
-	console.log(`\nDiagnostic Results for ${values.model}:`);
-	console.log(`  Overall Score: ${(report.overallScore * 100).toFixed(1)}%`);
-	for (const [cat, score] of Object.entries(report.categoryScores)) {
-		console.log(`  - ${cat}: ${(score * 100).toFixed(1)}%`);
+		// Average scores
+		baseReport.overallScore = totalOverall / runs;
+		for (const key of Object.keys(categoryTotals)) {
+			baseReport.categoryScores[key] = categoryTotals[key] / runs;
+		}
+		
+		// Flatten structure for Phase 2 expected output
+		const flatReport = {
+			model: modelName,
+			language: values.language,
+			prompt_format: values.prompt_format || values.prompt,
+			overall_accuracy: baseReport.overallScore,
+			...baseReport.categoryScores,
+			tokens_input: 0,
+			tokens_output: 0,
+			latency_p50_ms: baseReport.evaluations.reduce((sum: number, e: any) => sum + e.latencyMs, 0) / baseReport.evaluations.length
+		};
+		
+		allReports.push(flatReport);
+
+		console.log(`\nDiagnostic Results for ${modelName}:`);
+		console.log(`  Overall Score: ${(flatReport.overall_accuracy * 100).toFixed(1)}%`);
+		for (const [cat, score] of Object.entries(baseReport.categoryScores)) {
+			console.log(`  - ${cat}: ${(score as number * 100).toFixed(1)}%`);
+		}
 	}
 
 	if (values.output) {
-		await writeFile(values.output, JSON.stringify(report, null, 2));
+		await writeFile(values.output, JSON.stringify(allReports, null, 2));
 		console.log(`Diagnostic report saved to ${values.output}`);
 	}
 }
