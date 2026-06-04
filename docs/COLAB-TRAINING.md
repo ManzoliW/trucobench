@@ -43,7 +43,7 @@ if not os.path.exists("/content/trucobench"):
 %cd /content/trucobench
 
 # Install GPU-accelerated RL dependencies (including wandb)
-!pip install -q trl peft bitsandbytes accelerate datasets transformers wandb
+!pip install -U -q trl peft bitsandbytes accelerate datasets transformers wandb
 ```
 
 ### Cell 2: Run GRPO Training
