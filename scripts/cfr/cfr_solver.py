@@ -122,6 +122,7 @@ class MCCFRSolver:
         for i in range(n_iterations):
             updating_player = i % 2
             game = TrucoGame(seed=self._rng.randint(0, 2**31))
+            # reach_p=1, reach_opp=1, sample_prob=1 at root
             self._traverse(game, updating_player, 1.0, 1.0, 1.0)
             self.iteration += 1
 
@@ -135,70 +136,87 @@ class MCCFRSolver:
         print(f"\nCompleted {n_iterations:,} iterations in {time.time()-t0:.1f}s")
         print(f"Total info-states visited: {self.table.num_infostates():,}")
 
+
     def _traverse(
         self,
         game: TrucoGame,
         updating_player: int,
-        reach_p0: float,
-        reach_p1: float,
-        reach_chance: float,
+        reach_p: float,       # reach prob of updating player
+        reach_opp: float,     # reach prob of opponent × chance
+        sample_prob: float,   # probability we sampled this trajectory
     ) -> float:
         """
-        Recursive OS-MCCFR traversal.
-        Returns the sampled utility for `updating_player`.
+        True Outcome Sampling MCCFR (Lanctot et al., 2009).
+
+        Samples exactly ONE action at every node (for both players and chance).
+        Uses importance sampling to correct regret updates for the updating player.
+
+        Returns: sampled utility for `updating_player` (importance-weighted).
         """
         cp = game.current_player()
 
-        # Terminal node
+        # Terminal
         if cp is None:
             s = game.state.scores
-            # Utility: win=+1, lose=-1, normalised by WIN_SCORE
-            return (s[updating_player] - s[1 - updating_player]) / WIN_SCORE
+            utility = (s[updating_player] - s[1 - updating_player]) / WIN_SCORE
+            return utility / sample_prob  # importance weight correction
 
         infostate = game.info_state_string(cp)
         legal = game.legal_actions(cp)
 
         if not legal:
-            # Shouldn't happen in a well-formed game, but be safe
             return 0.0
 
         strategy = self.table.get_strategy(infostate, legal)
 
         if cp == updating_player:
-            # Accumulate strategy sum (for average strategy)
-            reach = reach_p0 if cp == 0 else reach_p1
-            self.table.update_strategy_sum(infostate, legal, strategy, reach)
+            # Accumulate strategy sum (reach-weighted)
+            self.table.update_strategy_sum(infostate, legal, strategy, reach_p)
 
-            # Compute counterfactual values for all actions
-            action_values = []
-            for j, a in enumerate(legal):
-                g2 = game.clone()
-                g2.step(cp, a)
-                r_p0 = strategy[j] * reach_p0 if cp == 0 else reach_p0
-                r_p1 = strategy[j] * reach_p1 if cp == 1 else reach_p1
-                v = self._traverse(g2, updating_player, r_p0, r_p1, reach_chance)
-                action_values.append(v)
+            # OS-MCCFR: sample action with epsilon-on-policy mix for exploration
+            # epsilon ensures every action has a minimum sampling probability
+            eps = 0.6
+            n = len(legal)
+            sample_probs = [eps / n + (1 - eps) * strategy[j] for j in range(n)]
+            j = self._sample(sample_probs)
+            a = legal[j]
 
-            # Expected value under current strategy
-            node_value = sum(strategy[j] * action_values[j] for j in range(len(legal)))
+            # Recurse with sampled action
+            g2 = game.clone()
+            g2.step(cp, a)
+            new_reach_p = reach_p * strategy[j]
+            new_sample = sample_prob * sample_probs[j]
+            sampled_value = self._traverse(g2, updating_player,
+                                           new_reach_p, reach_opp, new_sample)
 
-            # Update regrets
-            opp_reach = reach_p1 if cp == 0 else reach_p0
-            regret_delta = [opp_reach * (av - node_value) for av in action_values]
+            # Regret update: only for the sampled action under IS correction
+            # W = sampled_value (already IS-weighted from the recursion)
+            # For non-sampled actions, counterfactual utility = 0 (OS-MCCFR)
+            regret_delta = []
+            for k in range(len(legal)):
+                if k == j:
+                    # counterfactual value of sampled action
+                    cf_val = reach_opp * sampled_value
+                    # subtract weighted average (reach_opp * E[v] ≈ reach_opp * strategy[j] * sampled_value)
+                    regret_delta.append(cf_val - reach_opp * strategy[j] * sampled_value)
+                else:
+                    # OS-MCCFR: regret for non-sampled actions is -reach_opp * strategy[j] * sampled_value
+                    regret_delta.append(-reach_opp * strategy[j] * sampled_value)
             self.table.update_regrets(infostate, legal, regret_delta)
 
-            return node_value
+            return sampled_value
 
         else:
-            # Non-updating player: sample one action according to their strategy
+            # Opponent node: sample one action according to their strategy
             j = self._sample(strategy)
             a = legal[j]
             g2 = game.clone()
             g2.step(cp, a)
-            r_p0 = strategy[j] * reach_p0 if cp == 0 else reach_p0
-            r_p1 = strategy[j] * reach_p1 if cp == 1 else reach_p1
-            return self._traverse(g2, updating_player, r_p0, r_p1,
-                                   reach_chance * strategy[j])
+            new_reach_opp = reach_opp * strategy[j]
+            new_sample = sample_prob * strategy[j]
+            return self._traverse(g2, updating_player,
+                                  reach_p, new_reach_opp, new_sample)
+
 
     def _sample(self, probs: List[float]) -> int:
         """Sample index from probability distribution."""
