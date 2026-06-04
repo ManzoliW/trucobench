@@ -2,6 +2,8 @@
 
 This guide explains how to run Group Relative Policy Optimization (GRPO) training for your Truco Paulista agent on a Google Colab instance using a free T4 GPU (16GB VRAM) or a premium L4/A100 GPU.
 
+It includes integration with **Weights & Biases (W&B)** for real-time tracking of policy rewards, KL divergence, losses, and thinking generation lengths.
+
 ---
 
 ## 1. Quick Setup in Colab
@@ -13,21 +15,23 @@ This guide explains how to run Group Relative Policy Optimization (GRPO) trainin
 
 ---
 
-## 2. Set Up Hugging Face Secret Token
+## 2. Configure Colab Secrets
 
-To load the dataset and authenticate with Hugging Face, you need to add your write token to Colab's Secrets:
-1. Click the **Key icon (Secrets)** in the left sidebar of Colab.
-2. Add a new secret:
-   - **Name:** `HF_TOKEN`
+You should add two API keys to Colab's Secrets sidebar (Key icon) and toggle **Notebook access** to ON for both:
+
+1. **`HF_TOKEN`**:
+   - **Purpose:** Download public/private models and datasets, and upload model checkpoints.
    - **Value:** *Your Hugging Face Write Token* (get it from [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)).
-3. Enable the **Notebook access** toggle for the `HF_TOKEN` secret.
+2. **`WANDB_API_KEY`** (Optional but highly recommended):
+   - **Purpose:** Watch live interactive training graphs (rewards, loss, KL divergence) in your browser.
+   - **Value:** *Your Weights & Biases API Key* (get it for free from [wandb.ai/authorize](https://wandb.ai/authorize)).
 
 ---
 
 ## 3. Training Execution Steps (Notebook Cells)
 
 ### Cell 1: Clone Repository & Install Dependencies
-This cell clones the repository, navigates into the project directory, and installs the required PyTorch, TRL, PEFT, and bitsandbytes packages.
+This cell clones the repository, navigates into the project directory, and installs the required PyTorch, TRL, PEFT, bitsandbytes, and W&B packages.
 
 ```python
 # Clone the repository to absolute path if not already cloned
@@ -38,17 +42,12 @@ if not os.path.exists("/content/trucobench"):
 # Change directory to the absolute path to prevent duplication errors on re-run
 %cd /content/trucobench
 
-# Install GPU-accelerated RL dependencies
-!pip install -q trl peft bitsandbytes accelerate datasets transformers
+# Install GPU-accelerated RL dependencies (including wandb)
+!pip install -q trl peft bitsandbytes accelerate datasets transformers wandb
 ```
 
 ### Cell 2: Run GRPO Training
-This cell imports your Hugging Face token from the Colab secrets environment and executes the training script with memory-optimized arguments for T4 (16GB VRAM):
-- `--load_in_4bit`: Uses QLoRA (NF4) double quantization to shrink model size to ~1.2GB VRAM.
-- `--batch_size 1`: Sets micro-batch size to 1 to prevent memory spikes.
-- `--gradient_accumulation_steps 8`: Sets accumulation steps to 8, establishing an effective batch size of 8.
-- `--group_size 4`: Samples 4 completions per prompt (standard GRPO setting).
-- `--dataset_size 10000`: Slices the first 10,000 examples of the dataset to keep execution time reasonable.
+This cell reads your keys from Colab Secrets, sets the reporting framework to W&B (falling back to TensorBoard if the W&B key is missing), and runs the training script:
 
 ```python
 import os
@@ -57,9 +56,20 @@ from google.colab import userdata
 # Inject Hugging Face token from Colab Secrets into environment variables
 try:
     os.environ["HF_TOKEN"] = userdata.get('HF_TOKEN')
-    print("Hugging Face Token loaded successfully!")
+    print("✅ Hugging Face Token loaded successfully!")
 except Exception as e:
-    print("Warning: HF_TOKEN secret not found or access not enabled. Ensure you set the secret in Colab.")
+    print("❌ Error loading Hugging Face token. Ensure HF_TOKEN secret is configured and access is enabled in the Secrets tab.")
+
+# Inject W&B API Key for live charts
+try:
+    os.environ["WANDB_API_KEY"] = userdata.get('WANDB_API_KEY')
+    os.environ["WANDB_PROJECT"] = "truco-grpo"
+    print("✅ Weights & Biases API Key loaded successfully!")
+except Exception as e:
+    print("⚠️ Warning: WANDB_API_KEY secret not found. Training will log to local TensorBoard instead of W&B.")
+
+# Determine reporting framework
+report_framework = "wandb" if os.environ.get("WANDB_API_KEY") else "tensorboard"
 
 # Run the training script
 !python scripts/train-grpo.py \
@@ -69,6 +79,7 @@ except Exception as e:
     --gradient_accumulation_steps 8 \
     --group_size 4 \
     --dataset_size 10000 \
+    --report_to {report_framework} \
     --output_dir "./output/truco-grpo"
 ```
 

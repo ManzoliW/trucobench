@@ -140,9 +140,23 @@ def heuristic_alignment_reward(prompts, completions, target_action, target_card_
             rewards.append(0.0)
     return rewards
 
+# Helper to load .env.local variables
+def load_dotenv():
+    if os.path.exists(".env.local"):
+        with open(".env.local", "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, val = line.split("=", 1)
+                    key = key.strip()
+                    val = val.strip().replace('"', '').replace("'", "")
+                    if key and val:
+                        os.environ[key] = val
+
 # ----------------- MAIN TRAINING FLOW -----------------
 
 def main():
+    load_dotenv()
     parser = argparse.ArgumentParser(description="Train a Truco Paulista agent using GRPO RL.")
     parser.add_argument("--model_id", type=str, default="Qwen/Qwen2.5-1.5B-Instruct", help="Hugging Face base model ID.")
     parser.add_argument("--dataset_size", type=int, default=20000, help="Number of training samples to load.")
@@ -156,6 +170,7 @@ def main():
     parser.add_argument("--load_in_4bit", action="store_true", help="Load the model in 4-bit precision (QLoRA).")
     parser.add_argument("--load_in_8bit", action="store_true", help="Load the model in 8-bit precision.")
     parser.add_argument("--output_dir", type=str, default="./output/truco-grpo", help="Output directory for checkpoints.")
+    parser.add_argument("--report_to", type=str, default="tensorboard", choices=["tensorboard", "wandb", "none"], help="Framework to report metrics to.")
     parser.add_argument("--smoke-test", action="store_true", help="Run a quick 1-step verification on CPU/GPU.")
     
     args = parser.parse_args()
@@ -255,7 +270,7 @@ def main():
         save_strategy="no" if args.smoke_test else "epoch",
         bf16=torch.cuda.is_bf16_supported() if torch.cuda.is_available() else False,
         fp16=not torch.cuda.is_bf16_supported() if torch.cuda.is_available() else False,
-        report_to="none" if args.smoke_test else "tensorboard",
+        report_to="none" if args.smoke_test else args.report_to,
     )
 
     print("Initializing GRPOTrainer...")
