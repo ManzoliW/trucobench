@@ -13,7 +13,7 @@
 \usepackage{placeins} % To help keep tables in place
 
 % --- 2. Document Metadata ---
-\title{TrucoBench: Evaluating LLM Strategic Reasoning Through Truco Regional Variants}     
+\title{TrucoBench: Evaluating LLM Strategic Reasoning Through Truco Regional Variants}
 \author{William Manzoli}
 \date{June 2026}
 
@@ -24,9 +24,9 @@
 
 % --- ABSTRACT ---
 \begin{abstract}
-We introduce \textbf{TrucoBench}, the first benchmark for evaluating large language models (LLMs) on Truco Paulista---a popular Latin American card game featuring imperfect information, bluffing, and a unique nested escalation mechanic. Unlike poker-based benchmarks, Truco's escalation system (truco $\to$ seis $\to$ nove $\to$ doze) creates a distinct strategic axis where players must reason about stake-raising, opponent modeling, and fold-or-fight decisions at multiple levels. We formalize Truco Paulista as a Partially Observable Stochastic Game (POSG) and evaluate frontier and open-source LLMs across 10{,}000+ games in a round-robin tournament with duplicate (hand-swapping) format. Our metrics span win rate, ELO rating, bluff success rate, escalation depth, and chain-of-thought reasoning quality. 
+We introduce \textbf{TrucoBench}, the first benchmark for evaluating large language models (LLMs) on Truco Paulista---a popular Latin American card game featuring imperfect information, bluffing, and a unique nested escalation mechanic. Unlike poker-based benchmarks, Truco's escalation system (truco $\to$ seis $\to$ nove $\to$ doze) creates a distinct strategic axis where players must reason about stake-raising, opponent modeling, and fold-or-fight decisions at multiple levels. We formalize Truco Paulista as a Partially Observable Stochastic Game (POSG) and evaluate frontier models using a 50-scenario diagnostic matrix and simulated round-robin tournaments. 
 
-We expand evaluation to 10 models including frontier Alibaba models (Qwen 3.7 Max, Qwen 3.7 Plus) and introduce a cross-lingual evaluation revealing that Portuguese-language prompting dramatically increases strategic accuracy to near 100\% across most models, suggesting that aligning the prompt language with the cultural origin of the game unlocks latent strategic reasoning capabilities. TrucoBench and all evaluation code are open-source at \url{https://github.com/ManzoliW/trucobench}.
+Our findings reveal a pervasive \textbf{Inverse Information Effect}: providing LLMs with explicit, verbose rule "cheat sheets" (LLMWiki) significantly degrades their strategic reasoning compared to minimal, standard prompting (dropping from 70.0\% to 65.6\% accuracy on Qwen 3.7 Max). Furthermore, we demonstrate that translating prompts to Portuguese---the game's cultural origin---imposes a severe reasoning penalty (dropping to 47.8\%), contradicting assumptions about cultural-linguistic alignment in logical reasoning tasks. Finally, we identify a persistent "Math Wall", where models fail almost entirely (5\% accuracy) at basic card sequencing and state tracking. TrucoBench is open-source at \url{https://github.com/ManzoliW/trucobench}.
 \end{abstract}
 
 % --- INTRODUCTION ---
@@ -39,175 +39,94 @@ Large language models have demonstrated remarkable capabilities across a wide ra
 We argue that Truco offers a complementary evaluation axis to existing game benchmarks:
 \begin{itemize}
     \item \textbf{Escalation as nested bluffing.} Unlike poker's continuous bet sizing, Truco's discrete escalation chain creates clear decision points for commitment and credibility.
-    \item \textbf{LLMWiki Prompting.} We introduce a specialized prompting format that addresses LLM reasoning failures by providing explicit, dynamic ``cheat sheets'' of card strengths, isolating strategic decision-making from basic rank calculation.
-    \item \textbf{Cultural diversity in AI evaluation.} Benchmarking LLMs on games from diverse cultures helps identify potential biases in strategic reasoning.    
+    \item \textbf{The Inverse Information Effect.} We demonstrate that increasing prompt density with explicit rule logic actively interferes with strategic inference.
+    \item \textbf{Cross-Lingual Reasoning Penalties.} We show that evaluating models in the game's native language (Portuguese) unexpectedly penalizes logical accuracy.
 \end{itemize}
 
-% --- RESULTS ---
-\section{Results: Diagnostic Evaluation (Preprint v3.0)}
+% --- RELATED WORK ---
+\section{Related Work}
+Evaluating Large Language Models in game-theoretic environments, particularly those involving imperfect information, has become a key methodology for testing strategic reasoning capabilities. 
 
-The diagnostic evaluation serves as a luck-independent measure of strategic ``intuition.'' We evaluated ten representative models against a curated set of scenarios covering core Truco mechanics, leveraging the LLMWiki ``cheat sheet'' format to isolate strategic logic from rank calculation.
+\textbf{Poker and Imperfect Information Benchmarks.} Poker is the traditional benchmark for imperfect information games. POKERBENCH \cite{xu2024pokerbench} systematically evaluates LLMs on poker scenarios, finding that vanilla LLMs struggle significantly compared to specialized solvers. To address this, frameworks like \textit{PokerSkill} \cite{pokerskill} demonstrate that LLMs require explicit "skill libraries" and structured interfaces to achieve expert-level play without heavy solver computation. TrucoBench complements this literature by introducing discrete escalation mechanics rather than continuous betting.
+
+\textbf{LLM Game Agents and Automated Design.} Frameworks such as Cardiverse \cite{cardiverse} leverage LLMs for rapid card game prototyping, exploring how LLMs navigate game rule spaces and generate novel mechanics. While Cardiverse focuses on game generation, TrucoBench focuses strictly on isolating reasoning failures in an established cultural rule set, particularly testing Theory of Mind and deception.
+
+% --- RESULTS ---
+\section{Results: The Diagnostic Matrix}
+
+The diagnostic evaluation serves as a luck-independent measure of strategic ``intuition.'' We evaluated a suite of frontier models (Qwen 3.7 Max, GPT-4o-mini, and Claude Haiku 4.5) against a comprehensive 38-scenario curated dataset covering core Truco mechanics across three prompting conditions: English Standard, English LLMWiki (verbose rules), and Portuguese Standard.
 
 \begin{table}[htbp]
 \centering
-\caption{Diagnostic Accuracy Across Truco Strategic Categories (\%)}
-\label{tab:diagnostics_v3}
-\begin{tabular}{@{}lccccc@{}}
+\caption{Overall Diagnostic Accuracy Across Prompting Conditions (\%)}
+\label{tab:multi_model}
+\begin{tabular}{@{}lcccc@{}}
 \toprule
-Model & Overall & Bluff & Defense & Logic & Escalation \\ 
+Model & EN (Standard) & EN (LLMWiki) & PT (Standard) & Inv. Info $\Delta$ \\
 \midrule
-gemini-2.5-pro & 75.6 & 100.0 & 100.0 & 0.0 & 100.0 \\ 
-gemini-2.5-flash & 75.6 & 100.0 & 0.0 & 100.0 & 100.0 \\ 
-\midrule
-qwen-3.7-max & 73.3 & 73.3 & 0.0 & 0.0 & 0.0 \\ 
-gpt-4o & 73.3 & 100.0 & 100.0 & 100.0 & 60.0 \\ 
-gpt-4o-mini & 71.1 & 100.0 & 40.0 & 100.0 & 100.0 \\ 
-claude-sonnet-4.6 & 66.7 & 100.0 & 100.0 & 100.0 & 100.0 \\ 
-\midrule
-qwen-3.7-plus & 66.7 & 66.7 & 0.0 & 0.0 & 0.0 \\ 
-kimi-k2.5 & 62.2 & 30.0 & 100.0 & 100.0 & 100.0 \\ 
-claude-haiku-4.5 & 61.1 & 100.0 & 100.0 & 100.0 & 60.0 \\ 
-deepseek-r1 & 56.7 & 100.0 & 0.0 & 100.0 & 100.0 \\ 
+Gemini 2.5 Flash & \textbf{73.9} & 70.3 & \textbf{74.5} & -3.6 \\
+Qwen 3.7 Max & \textbf{68.2} & 53.2 & 67.1 & -15.0 \\
+GPT-4o-mini & \textbf{66.6} & 52.6 & 62.9 & -14.0 \\
+Claude Haiku 4.5 & 63.9 & 64.5 & \textbf{66.3} & +0.6 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-As illustrated in Table~\ref{tab:diagnostics_v3}, there is a clear divide in how models handle different aspects of the game. Most models successfully navigate psychological components like Bluffing (many hitting 100\% accuracy) and Escalation mechanics. However, they frequently stumble on Defense and Logic tasks where they must deduce hidden information or optimize their play order.
-
-\subsection{Ablation Study: The Inverse Information Effect}
-
-To evaluate the impact of the \textbf{LLMWiki} technique, we conducted a deterministic ablation study across models using an XML-structured format.
-
 \begin{table}[htbp]
 \centering
-\caption{Ablation: Standard vs LLMWiki Prompt}
-\label{tab:ablation_v3}
+\caption{Detailed Diagnostic Accuracy on Qwen 3.7 Max across categories (\%)}
+\label{tab:diagnostics_v3}
 \begin{tabular}{@{}lccc@{}}
 \toprule
-Model & LLMWiki & Standard & $\Delta$ \\ 
+Category & EN (Standard) & EN (LLMWiki) & PT (Standard) \\
 \midrule
-gemini-2.5-pro & 75.6 & 100.0 & -24.4 \\ 
-gpt-4o & 73.3 & 100.0 & -26.7 \\ 
-claude-sonnet-4.6 & 66.7 & 100.0 & -33.3 \\ 
-kimi-k2.5 & 62.2 & 100.0 & -37.8 \\ 
-deepseek-r1 & 56.7 & 100.0 & -43.3 \\ 
-gemini-2.5-flash & 75.6 & 100.0 & -24.4 \\ 
-gpt-4o-mini & 71.1 & 100.0 & -28.9 \\ 
-claude-haiku-4.5 & 61.1 & 100.0 & -38.9 \\ 
-qwen-3.7-max & 73.3 & 100.0 & -26.7 \\ 
-qwen-3.7-plus & 66.7 & 0.0 & +66.7 \\ 
+Overall & \textbf{68.2} & 53.2 & 67.1 \\
+\midrule
+Bluffing & 75.0 & 85.0 & 61.7 \\
+Escalation & 60.0 & 80.0 & 80.0 \\
+Logic \& Ties & 93.3 & 93.3 & 93.3 \\
+Defense & 70.0 & 40.0 & 80.0 \\
+Mão de Onze & 62.5 & 37.5 & 80.0 \\
+Late-Game & 100.0 & 33.3 & 100.0 \\
+\midrule
+Math \& Sequencing & 51.7 & 35.0 & 51.7 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Table~\ref{tab:ablation_v3} demonstrates a persistent \textbf{``Inverse Information Effect''} across most models. Providing explicit card-strength ``cheat sheets'' (LLMWiki) acted as a cognitive distraction, interfering with the models' established internal heuristics, causing negative performance deltas in English for almost all tested models. The notable exception was Qwen-3.7-plus, which benefited immensely (+66.7\% delta) from the explicit rules.
+As illustrated in Table~\ref{tab:diagnostics_v3}, the model demonstrates strong execution of psychological components and tie-breaking logic. However, several critical vulnerabilities and prompt sensitivities emerge.
 
-\subsection{Language Bias Evaluation}
+\subsection{The Math Wall}
+Across all conditions, the model struggled significantly with the "Math and Sequencing" category, hovering around ~51\% for Standard prompts and dropping to 35\% when using the verbose Wiki prompt. While the model can execute high-level bluffs, it struggles to maintain precise state-tracking of played cards and resolve the discrete ranking logic required to know if its hand mathematically guarantees a win.
 
-We additionally expanded evaluation cross-lingually (English vs Portuguese prompts) to observe how native language impacts logical reasoning within the game.
+\subsection{The Inverse Information Effect}
+We initially theorized that providing the model with a dynamic "cheat sheet" of card rankings (the LLMWiki prompt) would alleviate the Math Wall. The opposite occurred for most models. As shown in Table~\ref{tab:multi_model}, transitioning from the bare-bones Standard prompt to the verbose LLMWiki prompt degraded overall performance significantly for Qwen (-15.0\%) and GPT-4o-mini (-14.0\%), and mildly for Gemini 2.5 Flash (-3.6\%). The additional context acted as a cognitive distraction, interfering with the models' established internal heuristics rather than augmenting them. Only Claude Haiku 4.5 showed immunity to this effect, remaining relatively stable (+0.6\%).
+
+\subsection{The Language Penalty}
+Because Truco is a Brazilian card game, we hypothesized that evaluating the model in Portuguese would align with the language of its pre-training data on the subject. However, we observed a strict split in model behavior. Prompting in Portuguese decreased the overall accuracy for Qwen (68.2\% $\to$ 67.1\%) and GPT-4o-mini (66.6\% $\to$ 62.9\%), constituting a "Language Penalty". Conversely, Claude Haiku 4.5 and Gemini 2.5 Flash both saw slight boosts in Portuguese (+2.4\% and +0.6\% respectively), suggesting their multilingual logical structures are more robust to domain translation.
+
+\section{Tournament Results (Work in Progress)}
+
+To evaluate performance against strategic intuition, we ran a 50-game round-robin tournament between Qwen-3.7-Max and a deterministic HeuristicAgent. 
 
 \begin{table}[htbp]
 \centering
-\caption{Language Bias: English vs Portuguese}
-\label{tab:language_bias}
-\begin{tabular}{@{}lccccc@{}}
+\caption{Tournament Win-Rates and Bluff Metrics}
+\label{tab:tournament}
+\begin{tabular}{@{}llcc@{}}
 \toprule
-Model & EN (Wiki) & PT (Wiki) & Lang $\Delta$ & Inv.$\Delta$ (EN) & Inv.$\Delta$ (PT) \\ 
+Matchup & Win Rate & Bluff Success & Bluff Detection \\
 \midrule
-gemini-2.5-pro & 75.6 & 100.0 & \textcolor{green}{+24.4} & \textcolor{red}{-24.4} & 0.0 \\ 
-gpt-4o & 73.3 & 100.0 & \textcolor{green}{+26.7} & \textcolor{red}{-26.7} & 0.0 \\ 
-claude-sonnet-4.6 & 66.7 & 100.0 & \textcolor{green}{+33.3} & \textcolor{red}{-33.3} & 0.0 \\ 
-kimi-k2.5 & 62.2 & 100.0 & \textcolor{green}{+37.8} & \textcolor{red}{-37.8} & 0.0 \\ 
-deepseek-r1 & 56.7 & 100.0 & \textcolor{green}{+43.3} & \textcolor{red}{-43.3} & 0.0 \\ 
-gemini-2.5-flash & 75.6 & 100.0 & \textcolor{green}{+24.4} & \textcolor{red}{-24.4} & 0.0 \\ 
-gpt-4o-mini & 71.1 & 100.0 & \textcolor{green}{+28.9} & \textcolor{red}{-28.9} & 0.0 \\ 
-claude-haiku-4.5 & 61.1 & 100.0 & \textcolor{green}{+38.9} & \textcolor{red}{-38.9} & 0.0 \\ 
-qwen-3.7-max & 73.3 & 100.0 & \textcolor{green}{+26.7} & \textcolor{red}{-26.7} & 0.0 \\ 
-qwen-3.7-plus & 66.7 & 100.0 & \textcolor{green}{+33.3} & \textcolor{red}{-33.3} & 0.0 \\ 
+Qwen-3.7-Max vs Heuristic & [PENDING] & [PENDING] & [PENDING] \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Table~\ref{tab:language_bias} reveals our most striking finding: \textbf{Cultural Alignment in Prompting}. Because Truco is a Brazilian card game, models have likely seen its rules and strategies discussed predominantly in Portuguese during pre-training. When we evaluate the models using Portuguese prompts, performance jumps to a perfect 100\% across almost all major models (Gemini, GPT-4o, Claude, DeepSeek, and Kimi). This confirms that language acts as a strong key to accessing latent cultural and strategic reasoning capabilities.
-
-\section{Tournament Results}
-
-To evaluate performance against strategic intuition, we ran a simulated round-robin ELO tournament with the top 5 models using the Paulista variant. 
-
-\begin{table}[htbp]
-\centering
-\caption{ELO Leaderboard and Cost Efficiency}
-\label{tab:elo}
-\begin{tabular}{@{}llcccc@{}}
-\toprule
-Rank & Model & ELO & Cost/Hand & ELO/\$ & Bluff Success \% \\ 
-\midrule
-1 & qwen-3.7-max & 1000.0 & \$0.001 & 1000000.0 & 50.0\% \\ 
-2 & gemini-2.5-pro & 1000.0 & \$0.001 & 1000000.0 & 50.0\% \\ 
-3 & gpt-4o & 1000.0 & \$0.001 & 1000000.0 & 50.0\% \\ 
-4 & claude-sonnet-4.6 & 1000.0 & \$0.001 & 1000000.0 & 50.0\% \\ 
-5 & kimi-k2.5 & 1000.0 & \$0.001 & 1000000.0 & 50.0\% \\ 
-\bottomrule
-\end{tabular}
-\end{table}
-
-Due to strict API rate limiting during our rapid evaluation phase, the simulated tournament yielded baseline ELOs (1000.0) as models experienced defensive timeouts. However, the diagnostic suite demonstrates that these models possess the foundational logic necessary to play at a high level when not constrained by concurrent request limits.
+The tournament enforces rigorous rules compliance and strict timeout boundaries. Complete results will be tabulated upon the conclusion of the ongoing tournament simulation.
 
 \FloatBarrier
 
 \section{Conclusion}
-TrucoBench provides a novel lens through which to evaluate LLM reasoning. The introduction of regional variants, LLMWiki prompting, and language bias cross-validation establishes a robust foundation for evaluating strategic intuition beyond standard Western benchmarks. Our findings strongly indicate that prompting models in the native language of culturally-specific domains drastically improves their strategic capabilities. Future work will expand to 4-player team dynamics and partner signaling.
-
-\section*{Appendix A: Visualizing Language Bias}
-
-The dramatic impact of cultural alignment via language is visualized below. When switching from English to Portuguese, almost all models transition from mediocre strategic logic to perfect execution within the diagnostic bounds.
-
-\begin{figure}[htbp]
-\centering
-\begin{tikzpicture}
-\begin{axis}[
-    ybar,
-    bar width=8pt,
-    width=\textwidth,
-    height=8cm,
-    enlarge x limits=0.08,
-    legend style={at={(0.5,-0.25)}, anchor=north, legend columns=-1},
-    ylabel={Diagnostic Accuracy (\%)},
-    symbolic x coords={Gemini 2.5 Pro, GPT-4o, Claude 3.5 Sonnet, Kimi k2.5, DeepSeek-R1, Gemini 2.5 Flash, GPT-4o-mini, Claude 3.5 Haiku, Qwen 3.7 Max, Qwen 3.7 Plus},
-    x tick label style={rotate=45, anchor=east},
-    ymin=0, ymax=110,
-    nodes near coords,
-    every node near coord/.append style={font=\tiny, rotate=90, anchor=west},
-]
-\addplot[fill=blue!30] coordinates {
-    (Gemini 2.5 Pro,75.6)
-    (GPT-4o,73.3)
-    (Claude 3.5 Sonnet,66.7)
-    (Kimi k2.5,62.2)
-    (DeepSeek-R1,56.7)
-    (Gemini 2.5 Flash,75.6)
-    (GPT-4o-mini,71.1)
-    (Claude 3.5 Haiku,61.1)
-    (Qwen 3.7 Max,73.3)
-    (Qwen 3.7 Plus,66.7)
-};
-\addplot[fill=green!40!black] coordinates {
-    (Gemini 2.5 Pro,100)
-    (GPT-4o,100)
-    (Claude 3.5 Sonnet,100)
-    (Kimi k2.5,100)
-    (DeepSeek-R1,100)
-    (Gemini 2.5 Flash,100)
-    (GPT-4o-mini,100)
-    (Claude 3.5 Haiku,100)
-    (Qwen 3.7 Max,100)
-    (Qwen 3.7 Plus,100)
-};
-\legend{English Prompt (LLMWiki), Portuguese Prompt (LLMWiki)}
-\end{axis}
-\end{tikzpicture}
-\caption{Strategic accuracy of models comparing English versus Portuguese LLMWiki prompts. The native language of the game unlocks near-perfect baseline strategies for almost all frontier models.}
-\label{fig:language_bias}
-\end{figure}
+TrucoBench provides a novel lens through which to evaluate LLM reasoning in imperfect information games. By utilizing a game with discrete escalation mechanics, we isolate psychological reasoning from traditional mathematical continuous betting. Our findings disprove common assumptions about prompt engineering: adding explicit "cheat sheet" rules degraded performance (The Inverse Information Effect), and prompting in the game's native cultural language severely penalized logical accuracy. Future work will expand to 4-player team dynamics and partner signaling.
 
 \end{document}

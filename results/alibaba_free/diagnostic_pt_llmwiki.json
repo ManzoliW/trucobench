@@ -7,16 +7,16 @@
     "bluff": 1,
     "tokens_input": 0,
     "tokens_output": 0,
-    "latency_p50_ms": 39056.0755
+    "latency_p50_ms": 30148.917800000003
   },
   {
     "model": "qwen-3.7-plus",
     "language": "pt",
     "prompt_format": "llmwiki",
-    "overall_accuracy": 0,
-    "bluff": 0,
+    "overall_accuracy": 1,
+    "bluff": 1,
     "tokens_input": 0,
     "tokens_output": 0,
-    "latency_p50_ms": 7865.946300000003
+    "latency_p50_ms": 39511.08240000001
   }
 ]

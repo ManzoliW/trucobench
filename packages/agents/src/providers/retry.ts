@@ -7,9 +7,9 @@ export interface RetryOptions {
 }
 
 const DEFAULT_RETRY_OPTIONS: RetryOptions = {
-	maxRetries: 2,
-	baseDelayMs: 1000,
-	maxDelayMs: 8_000,
+	maxRetries: 30,
+	baseDelayMs: 2000,
+	maxDelayMs: 15000,
 };
 
 function isRetryableError(error: unknown): boolean {
@@ -18,7 +18,7 @@ function isRetryableError(error: unknown): boolean {
 		// Rate limit (429), overloaded (529), server errors (5xx)
 		if (msg.includes("429") || msg.includes("rate limit")) return true;
 		if (msg.includes("529") || msg.includes("overloaded")) return true;
-		if (msg.includes("500") || msg.includes("502") || msg.includes("503")) return true;
+		if (msg.includes("500") || msg.includes("502") || msg.includes("503") || msg.includes("unavailable")) return true;
 		if (msg.includes("timeout") || msg.includes("econnreset")) return true;
 	}
 	// Check for response-like objects with status codes

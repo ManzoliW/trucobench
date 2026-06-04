@@ -70,7 +70,7 @@ export class AiSdkProvider implements LLMProvider {
 		}
 	}
 
-	async chat(messages: ChatMessage[], temperature: number): Promise<LLMResponse> {
+	async chat(messages: ChatMessage[], temperature: number, tools?: Record<string, any>): Promise<LLMResponse> {
 		const systemMsg = messages.find((m) => m.role === "system");
 		const userMsgs = messages
 			.filter((m) => m.role !== "system")
@@ -85,6 +85,7 @@ export class AiSdkProvider implements LLMProvider {
 			system: systemMsg?.content,
 			messages: userMsgs,
 			temperature,
+			tools,
 		});
 		const latencyMs = performance.now() - start;
 

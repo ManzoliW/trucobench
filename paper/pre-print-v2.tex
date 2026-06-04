@@ -1,0 +1,101 @@
+\documentclass[11pt]{article}
+
+% --- 1. Packages (Essential for ArXiv quality) ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{multirow}
+\usepackage[numbers]{natbib}
+
+% --- 2. Document Metadata ---
+\title{TrucoBench: Evaluating LLM Strategic Reasoning Through Truco Regional Variants}     
+\author{William Manzoli}
+\date{June 2026}
+
+% --- 3. The Document ---
+\begin{document}
+
+\maketitle
+
+% --- ABSTRACT ---
+\begin{abstract}
+We introduce \textbf{TrucoBench}, the first benchmark for evaluating large language models (LLMs) on Truco---a popular Latin American card game featuring imperfect information, bluffing, and a unique nested escalation mechanic. We support two primary regional variants: \textbf{Truco Paulista} and \textbf{Truco Mineiro}. Unlike poker-based benchmarks, Truco's escalation system creates a distinct strategic axis where players must reason about stake-raising, opponent modeling, and fold-or-fight decisions at multiple levels. We formalize Truco as a Partially Observable Stochastic Game (POSG) and introduce the \textbf{LLMWiki} prompting technique---an information-dense format that utilizes dynamic card-strength tables to reduce cognitive load. Our results reveal that while models excel at bluffing, they struggle with hidden-information logic, a gap partially mitigated by structured domain-knowledge injection. TrucoBench and all evaluation code are open-source at \url{https://github.com/ManzoliW/trucobench}.
+\end{abstract}
+
+% --- INTRODUCTION ---
+\section{Introduction}
+
+Large language models have demonstrated remarkable capabilities across a wide range of tasks. A growing body of work evaluates LLMs on strategic games---particularly poker---as a testbed for reasoning under uncertainty and deception. However, the focus on poker leaves a gap: many culturally significant card games with distinct strategic properties remain unexplored as LLM benchmarks.
+
+\textbf{Truco} is one of the most popular card games in Brazil and across Latin America. While it shares imperfect information with poker, it introduces a fundamentally different strategic axis: a \emph{nested escalation mechanic} where players can repeatedly raise the stakes of each round through a chain of calls (e.g., truco $\to$ seis $\to$ nove $\to$ doze). Each escalation forces the opponent into a three-way decision---accept, counter-raise, or fold---creating a rich space for bluffing, meta-reasoning, and risk assessment that is structurally distinct from poker's betting rounds. We support both the \textbf{Paulista} (variable manilhas) and \textbf{Mineiro} (fixed manilhas) variants, representing the two most common rule sets in Brazil.
+
+We argue that Truco offers a complementary evaluation axis to existing game benchmarks:
+\begin{itemize}
+    \item \textbf{Escalation as nested bluffing.} Unlike poker's continuous bet sizing, Truco's discrete escalation chain creates clear decision points for commitment and credibility.
+    \item \textbf{LLMWiki Prompting.} We introduce a specialized prompting format that addresses LLM reasoning failures by providing explicit, dynamic ``cheat sheets'' of card strengths, isolating strategic decision-making from basic rank calculation.
+    \item \textbf{Cultural diversity in AI evaluation.} Benchmarking LLMs on games from diverse cultures helps identify potential biases in strategic reasoning.    
+\end{itemize}
+
+% --- RESULTS ---
+\section{Results: Diagnostic Evaluation (Preprint v2.3)}
+
+The diagnostic evaluation serves as a luck-independent measure of strategic ``intuition.'' We evaluated eight representative models against a curated set of 9 scenarios covering core Truco mechanics, leveraging the LLMWiki ``cheat sheet'' format to isolate strategic logic from rank calculation.
+
+\begin{table}[ht]
+\centering
+\caption{Deterministic Diagnostic Accuracy (T=0.0) Across Strategic Categories (\%)}
+\label{tab:diagnostics}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Model & Overall & Bluff & Defense & Logic & Escalation \\ 
+\midrule
+gemini-2.5-pro & 80.0 & 100.0 & 40.0 & 100.0 & 100.0 \\ 
+gpt-4o & 61.1 & 100.0 & 100.0 & 100.0 & 60.0 \\ 
+claude-sonnet-4.6 & 71.1 & 100.0 & 40.0 & 100.0 & 100.0 \\
+kimi-k2.5 & 70.0 & 100.0 & 100.0 & 100.0 & 100.0 \\
+deepseek-r1 & 55.6 & 100.0 & 100.0 & 100.0 & 100.0 \\
+gemini-2.5-flash & 58.9 & 100.0 & 40.0 & 100.0 & 100.0 \\
+gpt-4o-mini & 53.3 & 30.0 & 40.0 & 100.0 & 100.0 \\
+claude-haiku-4.5 & 52.2 & 100.0 & 100.0 & 100.0 & 60.0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The results in Table~\ref{tab:diagnostics} (Deterministic $T=0.0$ configuration) reveal a significant ``Knowing-Doing Gap.'' While frontier models exhibit near-perfect accuracy in psychological categories like Bluffing, they struggle with hidden-information Logic and defensive optimization. Notably, \textbf{Gemini 2.5 Pro} and \textbf{Claude Sonnet 4.6} lead the deterministic leaderboard, followed closely by \textbf{Kimi-k2.5}.
+
+\subsection{Ablation Study: The Inverse Information Effect}
+
+To evaluate the impact of the \textbf{LLMWiki} technique, we conducted a deterministic ablation study across 8 models using an XML-structured format.
+
+\begin{table}[ht]
+\centering
+\caption{Ablation Study (T=0.0): Standard vs. LLMWiki Prompting (Overall Accuracy \%)}
+\label{tab:ablation}
+\begin{tabular}{lccc}
+\toprule
+Model & Standard (v1) & LLMWiki (v2) & Delta \\ 
+\midrule
+gpt-4o & 82.2 & 61.1 & \textcolor{red}{-21.1} \\ 
+gemini-2.5-pro & 74.4 & 80.0 & +\textbf{5.6} \\ 
+claude-sonnet-4.6 & 80.0 & 71.1 & \textcolor{red}{-8.9} \\ 
+deepseek-r1 & 66.7 & 55.6 & \textcolor{red}{-11.1} \\ 
+gpt-4o-mini & 75.6 & 53.3 & \textcolor{red}{-22.2} \\ 
+gemini-2.5-flash & 80.0 & 58.9 & \textcolor{red}{-21.1} \\ 
+claude-haiku-4.5 & 51.1 & 52.2 & +\textbf{1.1} \\ 
+kimi-k2.5 & 61.1 & 70.0 & +\textbf{8.9} \\ 
+\bottomrule
+\end{tabular}
+\end{table}
+
+As shown in Table~\ref{tab:ablation}, we observe a persistent \textbf{``Inverse Information Effect''} across most OpenAI and reasoning-heavy models (e.g., \textbf{GPT-4o} $-21.1\%$, \textbf{DeepSeek-R1} $-11.1\%$). In these architectures, providing explicit card-strength ``cheat sheets'' likely acted as a cognitive distraction, interfering with the models' established internal heuristics.
+
+However, \textbf{Kimi-k2.5} (+\textbf{8.9}\%) and \textbf{Gemini 2.5 Pro} (+\textbf{5.6}\%) emerged as significant exceptions. These models appear uniquely capable of utilizing explicit XML-structured reference tables to correct or augment their internal strategic logic. Preprint v2.3 thus highlights that the utility of prompt-level domain injection is highly architecture-dependent.
+
+\section{Conclusion}
+TrucoBench provides a novel lens through which to evaluate LLM reasoning. The introduction of regional variants and LLMWiki prompting establishes a robust foundation for evaluating strategic intuition beyond standard Western benchmarks. Future work will expand to 4-player team dynamics and partner signaling.
+
+\end{document}

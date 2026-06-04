@@ -8,7 +8,7 @@ export interface LLMResponse {
 export interface LLMProvider {
 	readonly name: string;
 	readonly model: string;
-	chat(messages: ChatMessage[], temperature: number): Promise<LLMResponse>;
+	chat(messages: ChatMessage[], temperature: number, tools?: Record<string, any>): Promise<LLMResponse>;
 }
 
 export interface ChatMessage {

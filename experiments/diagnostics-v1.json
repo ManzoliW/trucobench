@@ -358,7 +358,7 @@
   {
     "id": "ONZE_DEF_001",
     "name": "Mão de Onze - Defensive Fold",
-    "description": "Opponent is at 11 points and decided to play (Mão de Onze). You hold a very weak hand. You should FOLD Trick 1 to minimize damage if you're sure you'll lose.",
+    "description": "Opponent is at 11 points and accepted Mão de Onze (escalation is at TRUCO = 3 pts). You hold the weakest possible cards (4, 5, 6) with no Manilha. FOLDing concedes the round at 1 point (pre-escalation), while playing it out risks losing 3 points. You should FOLD to preserve score.",
     "category": "onze",
     "observation": {
       "playerId": 0,
@@ -393,12 +393,12 @@
       {
         "action": { "type": "FOLD" },
         "weight": 0.8,
-        "reasoning": "In Mão de Onze, the opponent only plays if they have a strong hand. Since you have the weakest possible cards (4, 5, 6) and no Manilha, folding Trick 1 prevents them from winning the full 3 points if they were just going to win anyway."
+        "reasoning": "The opponent accepted Mão de Onze, meaning they saw their hand and decided to play — they almost certainly have strong cards. Your hand (4, 5, 6) is the weakest possible with no Manilha. FOLDing concedes 1 point (pre-TRUCO level) instead of risking a 3-point loss. With the score at 5-11, preserving points is critical."
       },
       {
         "action": { "type": "PLAY_CARD", "cardIndex": 0 },
         "weight": 0.2,
-        "reasoning": "Playing the 4 is a 'nothing to lose' move, but folding is strategically cleaner in high-stakes point preservation."
+        "reasoning": "Playing the 4 is a 'nothing to lose' gamble, but statistically you will almost certainly lose the round and give up 3 points instead of 1."
       }
     ]
   },

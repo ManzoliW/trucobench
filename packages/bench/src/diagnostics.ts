@@ -58,7 +58,7 @@ export async function runDiagnostics(
         
         try {
             const timeout = new Promise<never>((_, reject) => {
-                setTimeout(() => reject(new Error("Timeout getting action")), 30000);
+                setTimeout(() => reject(new Error("Timeout getting action")), 300000);
             });
             action = await Promise.race([agent.getAction(scenario.observation), timeout]);
             latencyMs = performance.now() - startTime;

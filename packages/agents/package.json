@@ -12,6 +12,7 @@
 		"@google/genai": "^1.48.0",
 		"@trucobench/engine": "workspace:*",
 		"ai": "^6.0.144",
-		"openai": "^6.33.0"
+		"openai": "^6.33.0",
+		"zod": "^4.4.3"
 	}
 }

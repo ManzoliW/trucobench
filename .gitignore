@@ -60,3 +60,8 @@ ROADMAP.md
 # Paper artifacts
 paper/sections/diagnostic_table.tex
 paper/pre-print-v1.tex
+
+# Datasets & Large Archives
+*.jsonl
+*.jsonl.gz
+*.zip

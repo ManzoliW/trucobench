@@ -7,16 +7,16 @@
     "bluff": 1,
     "tokens_input": 0,
     "tokens_output": 0,
-    "latency_p50_ms": 58816.6176
+    "latency_p50_ms": 23045.8652
   },
   {
     "model": "qwen-3.7-plus",
     "language": "pt",
     "prompt_format": "standard",
-    "overall_accuracy": 0,
-    "bluff": 0,
+    "overall_accuracy": 1,
+    "bluff": 1,
     "tokens_input": 0,
     "tokens_output": 0,
-    "latency_p50_ms": 8326.114400000006
+    "latency_p50_ms": 37169.288
   }
 ]

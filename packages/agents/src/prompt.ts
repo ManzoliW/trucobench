@@ -10,6 +10,7 @@ import {
 	getManilhaRank,
 	isManilha,
 	cardStrength,
+	type TrickResult,
 } from "@trucobench/engine";
 
 export type PromptVariant = "economy" | "minimal" | "standard" | "verbose" | "wiki";

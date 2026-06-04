@@ -17,6 +17,7 @@ import {
 	RandomAgent,
 	RetryProvider,
 	AiSdkProvider,
+	MultiKeyProvider,
 } from "@trucobench/agents";
 
 // Automatically load .env for Node.js environments (Bun does this natively)
@@ -47,6 +48,7 @@ interface AgentConfig {
 	language: PromptLanguage;
 	temperature: number;
 	mode: ProviderMode;
+	useTools?: boolean;
 }
 
 function createAgent(name: string, cfg: AgentConfig): Agent {
@@ -60,6 +62,7 @@ function createAgent(name: string, cfg: AgentConfig): Agent {
 			provider: new RetryProvider(provider),
 			promptOptions,
 			temperature: cfg.temperature,
+			useTools: cfg.useTools,
 		});
 	}
 
@@ -69,7 +72,14 @@ function createAgent(name: string, cfg: AgentConfig): Agent {
 		if (name === "qwen-3.7-max") vercelName = "alibaba/qwen3.7-max";
 		if (name === "qwen-3.7-plus") vercelName = "alibaba/qwen3.7-plus";
 		if (name === "kimi-k2.5") vercelName = "moonshotai/kimi-k2.5";
-		return wrap(new AiSdkProvider("vercel-gateway", vercelName));
+		// Use MultiKeyProvider if a second key is set — doubles throughput
+		const key1 = process.env.VERCEL_AI_GATEWAY_API_KEY;
+		const key2 = process.env.VERCEL_AI_GATEWAY_API_KEY_2;
+		const uniqueKeys = [...new Set([key1, key2].filter(Boolean))] as string[];
+		const provider = uniqueKeys.length > 1
+			? MultiKeyProvider.fromVercelKeys(vercelName, uniqueKeys)
+			: new AiSdkProvider("vercel-gateway", vercelName);
+		return wrap(provider);
 	}
 	if (cfg.mode === "openrouter") {
 		return wrap(new AiSdkProvider("openrouter", name));
@@ -111,6 +121,7 @@ function parseAgentConfig(values: Record<string, string | boolean | undefined>):
 		language: (values.language as PromptLanguage) || "en",
 		temperature: Number.parseFloat((values.temperature as string) || "0.7"),
 		mode: (values.provider as ProviderMode) || "native",
+		useTools: !!values.tools,
 	};
 }
 
@@ -308,6 +319,7 @@ async function evalCommand() {
 			provider: { type: "string", default: "native" },
 			output: { type: "string" },
 			runs: { type: "string", default: "1" },
+			tools: { type: "boolean", default: false },
 		},
 		allowPositionals: true,
 	});

@@ -22,7 +22,7 @@ export class OpenAICompatProvider implements LLMProvider {
 		this.timeoutMs = timeoutMs;
 	}
 
-	async chat(messages: ChatMessage[], temperature: number): Promise<LLMResponse> {
+	async chat(messages: ChatMessage[], temperature: number, tools?: Record<string, any>): Promise<LLMResponse> {
 		const start = performance.now();
 
 		const ctrl = new AbortController();
@@ -57,7 +57,7 @@ export class OpenAICompatProvider implements LLMProvider {
 			throw new Error(`${this.name} API error ${res.status}: ${body.slice(0, 300)}`);
 		}
 
-		const data = await res.json();
+		const data = (await res.json()) as any;
 		const latencyMs = performance.now() - start;
 
 		return {

@@ -3,6 +3,9 @@ import type { Agent } from "./base-agent.ts";
 import { buildRetryPrompt, parseResponse, weakestLegalAction } from "./parser.ts";
 import { type PromptOptions, serializePrompt } from "./prompt.ts";
 import type { ChatMessage, LLMProvider, LLMResponse } from "./providers/types.ts";
+import { tool } from "ai";
+import { z } from "zod";
+import { cardStrength, isManilha, cardToString } from "@trucobench/engine";
 
 const MAX_RETRIES = 3;
 const DEFAULT_TEMPERATURE = 0.7;
@@ -32,6 +35,8 @@ export interface LLMAgentOptions {
 	systemPrompt?: string;
 	/** Use compact system prompt to reduce token usage. Default: false */
 	economyMode?: boolean;
+	/** Enable tool-augmented reasoning (Vercel AI SDK tools) to overcome the Math Wall. */
+	useTools?: boolean;
 }
 
 export interface ActionTrace {
@@ -51,6 +56,7 @@ export class LLMAgent implements Agent {
 	private promptOptions: PromptOptions;
 	private temperature: number;
 	private systemPrompt: string;
+	private useTools: boolean;
 
 	/** Last action trace for metric collection */
 	lastTrace: ActionTrace | null = null;
@@ -72,6 +78,7 @@ export class LLMAgent implements Agent {
 		this.temperature = options.temperature ?? DEFAULT_TEMPERATURE;
 		this.systemPrompt =
 			options.systemPrompt ?? (options.economyMode ? COMPACT_SYSTEM_PROMPT : FULL_SYSTEM_PROMPT);
+		this.useTools = options.useTools ?? false;
 	}
 
 	async getAction(observation: Observation): Promise<Action> {
@@ -81,11 +88,30 @@ export class LLMAgent implements Agent {
 			{ role: "user", content: prompt },
 		];
 
+		let tools: Record<string, any> | undefined = undefined;
+		if (this.useTools) {
+			tools = {
+				evaluate_hand_strength: tool({
+					description: "Get the exact mathematical strength of your hand against the current vira. Use this tool BEFORE making any decisions to avoid math and sequence errors.",
+					parameters: z.object({}), // No parameters needed, we use the current game state
+					execute: async (_args: any) => {
+						const lines = observation.hand.map((card) => {
+							const str = cardStrength(card, observation.vira, observation.variant);
+							const manilha = isManilha(card, observation.vira, observation.variant);
+							const suffix = manilha ? ` (MANILHA - Very Strong!)` : "";
+							return `${cardToString(card)}: Strength = ${str}${suffix}`;
+						});
+						return `Vira is ${cardToString(observation.vira)}.\nYour hand strengths (0=weakest, 13=strongest ZAP):\n${lines.join("\n")}\nNote: In standard Truco, any strength >= 10 is a Manilha and will beat any normal card (0-9).`;
+					},
+				}),
+			};
+		}
+
 		const retryResponses: LLMResponse[] = [];
 		let lastResponse: LLMResponse | null = null;
 
 		for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-			const response = await this.provider.chat(messages, this.temperature);
+			const response = await this.provider.chat(messages, this.temperature, tools);
 			lastResponse = response;
 
 			this.stats.totalInputTokens += response.inputTokens;

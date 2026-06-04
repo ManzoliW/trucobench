@@ -21,4 +21,5 @@ export {
 	createHuggingFaceProvider,
 } from "./providers/ai-sdk.ts";
 export { OpenAICompatProvider } from "./providers/openai-compat.ts";
+export { MultiKeyProvider } from "./providers/multi-key.ts";
 export type { LLMProvider, LLMResponse, ChatMessage } from "./providers/types.ts";

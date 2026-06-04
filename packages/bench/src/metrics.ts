@@ -42,8 +42,8 @@ export function computeAgentMetrics(agentName: string, tournament: TournamentRes
 	let trucoFolds = 0;
 	let trucoRaises = 0;
 	let bluffAttempts = 0;
-	const bluffSuccesses = 0;
-	const bluffDetections = 0;
+	let bluffSuccesses = 0;
+	let bluffDetections = 0;
 	let folds = 0;
 	let totalActions = 0;
 	let totalInputTokens = 0;
@@ -74,7 +74,8 @@ export function computeAgentMetrics(agentName: string, tournament: TournamentRes
 				// Track escalation depth
 				escalationDepth[round.finalEscalation] = (escalationDepth[round.finalEscalation] ?? 0) + 1;
 
-				for (const action of round.actions) {
+				for (let i = 0; i < round.actions.length; i++) {
+					const action = round.actions[i]!;
 					if (action.player !== playerIdx) continue;
 					totalActions++;
 
@@ -102,13 +103,50 @@ export function computeAgentMetrics(agentName: string, tournament: TournamentRes
 					}
 				}
 
-				// Bluff analysis: truco calls by this agent where no manilha in hand
-				// This is approximate — we'd need full hand state which is in the observation
-				// For now, track escalation events
-				for (const esc of round.escalationHistory) {
-					if (esc.player === playerIdx && esc.action === "TRUCO") {
-						// We count this as a bluff attempt (simplified)
-						bluffAttempts++;
+				// ── Bluff analysis using hand snapshots ──────────────────
+				// Scan the round's actions to find escalation sequences:
+				// TRUCO → opponent responds (ACCEPT/RAISE/FOLD)
+				for (let i = 0; i < round.actions.length; i++) {
+					const act = round.actions[i]!;
+
+					// Case 1: OUR bluff attempt — we called TRUCO/RAISE without a manilha
+					if (
+						act.player === playerIdx &&
+						(act.action.type === ActionType.TRUCO || act.action.type === ActionType.RAISE) &&
+						act.hand && act.vira
+					) {
+						const hadManilha = act.hand.some(c => isManilha(c, act.vira!));
+						if (!hadManilha) {
+							bluffAttempts++;
+							// Check if opponent folded in response (next action by opponent)
+							const nextOppAction = round.actions.slice(i + 1).find(
+								a => a.player !== playerIdx &&
+								(a.action.type === ActionType.FOLD || a.action.type === ActionType.ACCEPT || a.action.type === ActionType.RAISE)
+							);
+							if (nextOppAction && nextOppAction.action.type === ActionType.FOLD) {
+								bluffSuccesses++;
+							}
+						}
+					}
+
+					// Case 2: Bluff detection — opponent called TRUCO/RAISE without manilha,
+					// and WE accepted or raised (didn't fold)
+					if (
+						act.player !== playerIdx &&
+						(act.action.type === ActionType.TRUCO || act.action.type === ActionType.RAISE) &&
+						act.hand && act.vira
+					) {
+						const oppHadManilha = act.hand.some(c => isManilha(c, act.vira!));
+						if (!oppHadManilha) {
+							// Opponent was bluffing. Did we detect it (not fold)?
+							const ourResponse = round.actions.slice(i + 1).find(
+								a => a.player === playerIdx &&
+								(a.action.type === ActionType.ACCEPT || a.action.type === ActionType.RAISE || a.action.type === ActionType.FOLD)
+							);
+							if (ourResponse && ourResponse.action.type !== ActionType.FOLD) {
+								bluffDetections++;
+							}
+						}
 					}
 				}
 			}

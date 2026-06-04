@@ -97,13 +97,13 @@ tab2 += r"""\bottomrule
 with open("paper/tables/tab_ablation_v3.tex", "w") as f: f.write(tab2)
 
 # Table 3: Language Bias
-tab3 = r"""\begin{table}[ht]
+tab3 = r"""\begin{table}[htbp]
 \centering
-\caption{Language Bias: English vs Portuguese}
+\caption{Language Bias: English vs Portuguese. Evaluated over 9 scenarios ($T=0.0$). The 100\% ceiling warrants validation at larger scale.}
 \label{tab:language_bias}
-\begin{tabular}{@{}lccccc@{}}
+\begin{tabular}{@{}lcccc@{}}
 \toprule
-Model & EN (LLMWiki) & PT (LLMWiki) & Language $\Delta$ & Inv.Info $\Delta$ (EN) & Inv.Info $\Delta$ (PT) \\ 
+Model & EN (Wiki) & PT (Wiki) & Lang $\Delta$ & Inv.$\Delta$ (EN) \\ 
 \midrule
 """
 def colorize(val):
@@ -119,8 +119,7 @@ with open("results/language_bias/language_delta_table.csv", "r") as f:
         pt_llm = float(row["pt_llmwiki"]) * 100
         lang_d = float(row["language_delta"]) * 100
         inv_en = float(row["inverse_info_delta_en"]) * 100
-        inv_pt = float(row["inverse_info_delta_pt"]) * 100
-        tab3 += f"{m.replace('_', '\\_')} & {en_llm:.1f} & {pt_llm:.1f} & {colorize(lang_d)} & {colorize(inv_en)} & {colorize(inv_pt)} \\\\ \n"
+        tab3 += f"{m.replace('_', '\\_')} & {en_llm:.1f} & {pt_llm:.1f} & {colorize(lang_d)} & {colorize(inv_en)} \\\\ \n"
 tab3 += r"""\bottomrule
 \end{tabular}
 \end{table}"""

@@ -33,6 +33,10 @@ export interface ActionRecord {
 	inputTokens?: number;
 	outputTokens?: number;
 	latencyMs?: number;
+	/** Snapshot of player's hand at time of action (for bluff analysis) */
+	hand?: Card[];
+	/** Vira card for this round (needed to compute manilha status) */
+	vira?: Card;
 }
 
 export interface EscalationEvent {

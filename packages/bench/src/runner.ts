@@ -48,9 +48,9 @@ export async function playGame(
 		let action: Action;
 		
 		try {
-			// Add a timeout to prevent infinite hangs
+			// Add a timeout to prevent infinite hangs (5 mins to allow for rate limit backoffs)
 			const timeout = new Promise<never>((_, reject) => {
-				setTimeout(() => reject(new Error("Timeout getting action")), 30000);
+				setTimeout(() => reject(new Error("Timeout getting action")), 300000);
 			});
 			action = await Promise.race([agent.getAction(obs), timeout]);
 		} catch (err: any) {
@@ -61,6 +61,17 @@ export async function playGame(
 
 		// Record action
 		const record: ActionRecord = { player: playerId, action };
+
+		// Snapshot hand + vira for bluff analysis on escalation actions
+		if (
+			action.type === ActionType.TRUCO ||
+			action.type === ActionType.ACCEPT ||
+			action.type === ActionType.RAISE ||
+			action.type === ActionType.FOLD
+		) {
+			record.hand = [...obs.hand];
+			record.vira = obs.vira;
+		}
 
 		// Capture LLM trace if available
 		if (isLLMAgent(agent) && agent.lastTrace) {
