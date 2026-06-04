@@ -226,6 +226,8 @@ def main():
     print(f"Loading model and tokenizer for '{args.model_id}'...")
     tokenizer = AutoTokenizer.from_pretrained(args.model_id)
     tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"   # Required for decoder-only models during generation
+    tokenizer.truncation_side = "left" # Truncate from the left so the prompt end is always visible
 
     # Handle device map for CPU smoke tests vs normal GPU setups
     device_map = None
@@ -262,8 +264,10 @@ def main():
         per_device_train_batch_size=args.batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         num_generations=args.group_size,
-        max_prompt_length=1024,
-        max_completion_length=192,
+        # max_prompt_length removed — deprecated in newer trl versions.
+        # Pre-truncate prompts at dataset level or rely on tokenizer truncation_side="left".
+        max_completion_length=256,   # Increased: 192 could be too tight for JSON + reasoning
+        temperature=0.7,             # Non-zero temperature prevents empty greedy outputs
         num_train_epochs=args.epochs,
         max_steps=1 if args.smoke_test else -1,
         logging_steps=1,
