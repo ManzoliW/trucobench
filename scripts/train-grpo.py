@@ -51,9 +51,28 @@ def get_prompt_text(prompt):
         return ""
     return str(prompt)
 
+def get_completion_text(completion):
+    """
+    Normalize a completion to plain text regardless of TRL version.
+    - Older TRL: completions are plain strings.
+    - Newer TRL (conversational format): completions are lists of message dicts.
+    """
+    if isinstance(completion, list):
+        # Conversational format — find the assistant turn
+        for msg in completion:
+            if isinstance(msg, dict) and msg.get("role") == "assistant":
+                return msg.get("content", "")
+        # Fallback: last message content
+        if completion and isinstance(completion[-1], dict):
+            return completion[-1].get("content", "")
+        return ""
+    if isinstance(completion, dict):
+        return completion.get("content", "")
+    return str(completion)
+
 # Clean assistant output from markdown blocks if any
 def clean_completion(completion):
-    cleaned = completion.strip()
+    cleaned = get_completion_text(completion).strip()
     if cleaned.startswith("```json"):
         cleaned = cleaned[7:]
     if cleaned.endswith("```"):
@@ -62,8 +81,20 @@ def clean_completion(completion):
 
 # ----------------- REWARD FUNCTIONS -----------------
 
+_reward_debug_done = False
+
 def json_format_reward(prompts, completions, **kwargs):
     """Rewards outputs that parse as JSON and contain 'reasoning' and 'action' keys."""
+    global _reward_debug_done
+    if not _reward_debug_done:
+        # One-time diagnostic: show raw completion format so we can confirm text extraction works
+        raw = completions[0] if completions else None
+        extracted = get_completion_text(raw) if raw is not None else ""
+        print(f"\n[DEBUG] completion type: {type(raw).__name__}")
+        print(f"[DEBUG] raw completion[:200]: {str(raw)[:200]}")
+        print(f"[DEBUG] extracted text[:200]: {extracted[:200]}")
+        _reward_debug_done = True
+
     rewards = []
     for completion in completions:
         try:
@@ -72,7 +103,7 @@ def json_format_reward(prompts, completions, **kwargs):
             if "reasoning" in data and "action" in data:
                 rewards.append(1.0)
             else:
-                rewards.append(0.2) # JSON format matches, but incorrect keys
+                rewards.append(0.2)  # JSON format matches, but incorrect keys
         except Exception:
             rewards.append(0.0)
     return rewards
