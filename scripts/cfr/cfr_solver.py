@@ -86,13 +86,21 @@ class RegretTable:
 
     @classmethod
     def load(cls, path: str) -> "RegretTable":
-        with open(path, "rb") as f:
-            data = pickle.load(f)
-        t = cls()
-        t.regrets.update(data["regrets"])
-        t.strategy_sum.update(data["strategy_sum"])
-        print(f"Loaded strategy from {path}  ({t.num_infostates()} info-states)")
-        return t
+        import time
+        last_err = None
+        for attempt in range(10):
+            try:
+                with open(path, "rb") as f:
+                    data = pickle.load(f)
+                t = cls()
+                t.regrets.update(data["regrets"])
+                t.strategy_sum.update(data["strategy_sum"])
+                print(f"Loaded strategy from {path}  ({t.num_infostates()} info-states)")
+                return t
+            except Exception as e:
+                last_err = e
+                time.sleep(0.05 + 0.05 * attempt)
+        raise last_err
 
 
 # ---------------------------------------------------------------------------

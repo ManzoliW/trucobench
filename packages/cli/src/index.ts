@@ -18,6 +18,7 @@ import {
 	RetryProvider,
 	AiSdkProvider,
 	MultiKeyProvider,
+	CFRAgent,
 } from "@trucobench/agents";
 
 // Automatically load .env for Node.js environments (Bun does this natively)
@@ -54,6 +55,16 @@ interface AgentConfig {
 function createAgent(name: string, cfg: AgentConfig): Agent {
 	if (name === "random") return new RandomAgent();
 	if (name === "heuristic") return new HeuristicAgent();
+	if (name === "cfr") {
+		let strategyPath = "scripts/cfr/truco_cfr_strategy.pkl";
+		if (!existsSync(strategyPath)) {
+			strategyPath = "scripts/cfr/truco_cfr_smoke.pkl";
+		}
+		if (process.env.CFR_STRATEGY_PATH) {
+			strategyPath = process.env.CFR_STRATEGY_PATH;
+		}
+		return new CFRAgent(strategyPath);
+	}
 
 	const promptOptions: PromptOptions = { variant: cfg.prompt, language: cfg.language };
 

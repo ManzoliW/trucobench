@@ -2,6 +2,7 @@ export type { Agent } from "./base-agent.ts";
 export { RandomAgent } from "./random-agent.ts";
 export { HeuristicAgent } from "./heuristic-agent.ts";
 export { LLMAgent } from "./llm-agent.ts";
+export { CFRAgent } from "./cfr-agent.ts";
 export type { LLMAgentOptions, ActionTrace } from "./llm-agent.ts";
 export { serializePrompt } from "./prompt.ts";
 export type { PromptVariant, PromptLanguage, PromptOptions } from "./prompt.ts";

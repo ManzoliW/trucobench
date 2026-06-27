@@ -202,6 +202,9 @@ def main():
     parser.add_argument("--load_in_8bit", action="store_true", help="Load the model in 8-bit precision.")
     parser.add_argument("--output_dir", type=str, default="./output/truco-grpo", help="Output directory for checkpoints.")
     parser.add_argument("--report_to", type=str, default="tensorboard", choices=["tensorboard", "wandb", "none"], help="Framework to report metrics to.")
+    parser.add_argument("--save_steps", type=int, default=50, help="Save a checkpoint every N steps. Use 0 to disable mid-run saves (save at epoch end only).")
+    parser.add_argument("--max_steps", type=int, default=-1, help="Hard cap on training steps. Useful for partial sessions (-1 = full epoch).")
+    parser.add_argument("--resume_from_checkpoint", type=str, default=None, help="Path to a checkpoint dir to resume from, or 'auto' to auto-detect the latest in output_dir.")
     parser.add_argument("--smoke-test", action="store_true", help="Run a quick 1-step verification on CPU/GPU.")
     
     args = parser.parse_args()
@@ -287,8 +290,20 @@ def main():
         task_type="CAUSAL_LM"
     )
 
+    # Resolve 'auto' checkpoint
+    resume_checkpoint = args.resume_from_checkpoint
+    if resume_checkpoint == "auto":
+        import glob
+        ckpts = sorted(glob.glob(os.path.join(args.output_dir, "checkpoint-*")))
+        resume_checkpoint = ckpts[-1] if ckpts else None
+        if resume_checkpoint:
+            print(f"▶️  Auto-resuming from checkpoint: {resume_checkpoint}")
+        else:
+            print("⚠️  No checkpoint found in output_dir; starting from scratch.")
+
     # Configure GRPO Trainer parameters
     print("Setting up GRPO training arguments...")
+    save_strategy = "no" if args.smoke_test else ("steps" if args.save_steps > 0 else "epoch")
     training_args = GRPOConfig(
         output_dir=args.output_dir,
         learning_rate=args.lr,
@@ -300,9 +315,11 @@ def main():
         max_completion_length=256,   # Increased: 192 could be too tight for JSON + reasoning
         temperature=0.7,             # Non-zero temperature prevents empty greedy outputs
         num_train_epochs=args.epochs,
-        max_steps=1 if args.smoke_test else -1,
+        max_steps=1 if args.smoke_test else args.max_steps,
         logging_steps=1,
-        save_strategy="no" if args.smoke_test else "epoch",
+        save_strategy=save_strategy,
+        save_steps=args.save_steps if args.save_steps > 0 else 500,
+        save_total_limit=3,          # Keep only the 3 most recent checkpoints to save disk space
         bf16=torch.cuda.is_bf16_supported() if torch.cuda.is_available() else False,
         fp16=not torch.cuda.is_bf16_supported() if torch.cuda.is_available() else False,
         report_to="none" if args.smoke_test else args.report_to,
@@ -323,7 +340,9 @@ def main():
     )
 
     print("\n🚀 Starting GRPO training...")
-    trainer.train()
+    if resume_checkpoint:
+        print(f"   Resuming from: {resume_checkpoint}")
+    trainer.train(resume_from_checkpoint=resume_checkpoint)
     
     if not args.smoke_test:
         print(f"\nTraining completed! Saving LoRA weights to {args.output_dir}...")
